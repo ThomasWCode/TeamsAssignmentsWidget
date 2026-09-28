@@ -389,6 +389,7 @@ private fun statusLine(context: Context, state: WidgetState): String {
     return when (val status = state.status) {
         is SyncStatus.Running -> if (status.total > 0) "Syncing ${status.done}/${status.total}…" else "Syncing…"
         is SyncStatus.Failed -> "Last sync failed: ${status.reason}" + (lastGood?.let { " ($it)" } ?: "")
+        is SyncStatus.Stopped -> status.summary + (lastGood?.let { " ($it)" } ?: "")
         SyncStatus.Idle -> lastGood?.let { "${it.replaceFirstChar(Char::uppercase)} · ${state.assignments.size} to do" }
             ?: "Not synced yet"
     }

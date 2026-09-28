@@ -50,11 +50,24 @@ class AssignmentStoreTest {
         val store = AssignmentStore(file, clock)
         store.saveSuccess(listOf(physics))
         store.markRunning(done = 0, total = 3)
-        store.markFailed("Teams was closed")
+        store.markFailed("Couldn't read the Past due list")
 
         val state = store.state.value
         assertEquals(listOf(physics), state.assignments)
-        assertEquals(SyncStatus.Failed("Teams was closed", clock.millis()), state.status)
+        assertEquals(SyncStatus.Failed("Couldn't read the Past due list", clock.millis()), state.status)
+    }
+
+    @Test
+    fun `a sync the user stopped keeps the previous list and reloads as stopped`() = runTest {
+        val store = AssignmentStore(file, clock)
+        store.saveSuccess(listOf(physics))
+        store.markRunning(done = 1, total = 3)
+        store.markStopped(cancelled = true)
+
+        val state = store.state.value
+        assertEquals(listOf(physics), state.assignments)
+        assertEquals(SyncStatus.Stopped(cancelled = true, at = clock.millis()), state.status)
+        assertEquals(state, AssignmentStore(file, clock).state.value)
     }
 
     @Test

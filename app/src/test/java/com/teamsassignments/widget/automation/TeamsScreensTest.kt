@@ -180,6 +180,18 @@ class TeamsScreensTest {
     }
 
     @Test
+    fun `the Assignments module still loading is no list yet`() {
+        // Captured on the phone just after launch: Teams' toolbar over an empty WebView. There is
+        // no spinner to spot, so it is the missing tabs that keep this from reading as an empty list.
+        val loading = Fixtures.load("list_assignments_loading")
+        assertFalse(TeamsScreens.isList(loading))
+        assertFalse(TeamsScreens.isDetail(loading))
+        assertFalse(TeamsScreens.isLoading(loading))
+        assertNull(TeamsScreens.selectedTab(loading))
+        assertTrue(TeamsScreens.cards(loading).isEmpty())
+    }
+
+    @Test
     fun `a collapsed title may itself contain a due phrase`() {
         // Codex review: the card's own due line is the last one, so the title keeps its "Due at".
         val root = node(

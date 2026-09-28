@@ -51,6 +51,13 @@ sealed interface SyncStatus {
     @Serializable
     @SerialName("failed")
     data class Failed(val reason: String, val at: Long = 0) : SyncStatus
+
+    /** The user stopped the run, with Cancel or by leaving Teams. Not a failure: nothing went wrong. */
+    @Serializable
+    @SerialName("stopped")
+    data class Stopped(val cancelled: Boolean, val at: Long = 0) : SyncStatus {
+        val summary: String get() = if (cancelled) "Sync cancelled" else "Sync stopped"
+    }
 }
 
 @Serializable

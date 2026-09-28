@@ -24,13 +24,26 @@ class WidgetTextTest {
 
         assertEquals("Syncing…", subtitle(WidgetState(status = SyncStatus.Running())))
         assertEquals("Syncing 3/7…", subtitle(WidgetState(status = SyncStatus.Running(3, 7))))
-        assertEquals("Last sync failed: Teams was closed", subtitle(WidgetState(status = SyncStatus.Failed("Teams was closed"))))
+        assertEquals(
+            "Last sync failed: Couldn't read the Past due list",
+            subtitle(WidgetState(status = SyncStatus.Failed("Couldn't read the Past due list"))),
+        )
         assertEquals("Tap ↻ to sync with Teams", subtitle(WidgetState()))
         assertEquals(
             "Updated 14:32 · 2 due",
             subtitle(WidgetState(assignments = listOf(assignment(null), assignment(null)), lastSuccessAt = millis("2026-09-28T13:32:00Z"))),
         )
         assertEquals("Updated 14:32 · nothing due", subtitle(WidgetState(lastSuccessAt = millis("2026-09-28T13:32:00Z"))))
+    }
+
+    @Test
+    fun `a sync the user stopped keeps the last update time`() {
+        fun subtitle(state: WidgetState) = WidgetText.subtitle(state, clock, use24Hour = true, locale = Locale.UK)
+        val synced = WidgetState(lastSuccessAt = millis("2026-09-28T13:32:00Z"))
+
+        assertEquals("Sync cancelled · updated 14:32", subtitle(synced.copy(status = SyncStatus.Stopped(cancelled = true))))
+        assertEquals("Sync stopped · updated 14:32", subtitle(synced.copy(status = SyncStatus.Stopped(cancelled = false))))
+        assertEquals("Sync cancelled", subtitle(WidgetState(status = SyncStatus.Stopped(cancelled = true))))
     }
 
     @Test
