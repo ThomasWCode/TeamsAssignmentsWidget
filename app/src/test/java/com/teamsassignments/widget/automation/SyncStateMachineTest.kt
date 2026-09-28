@@ -15,6 +15,7 @@ import java.time.ZoneId
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -30,15 +31,17 @@ class SyncStateMachineTest {
     private val log = mutableListOf<String>()
     private val progress = mutableListOf<Pair<Int, Int>>()
 
+    private val hausaufgabe = "36274911-c6dd-490d-956d-0273df409847"
+    private val worksheet = "839994fb-a6a8-4f11-9ff6-bd319473a93a"
+
     private fun TestScope.machine(
         device: FakeTeamsDevice,
         config: AutomationConfig = AutomationConfig(),
-        wallClock: () -> Long = { clock.millis() },
         isCancelled: () -> Boolean = { false },
     ) = SyncStateMachine(
         device = device,
         parser = parser,
-        wallClock = wallClock,
+        wallClock = { clock.millis() },
         onProgress = { done, total -> progress += done to total },
         config = config,
         now = { testScheduler.currentTime },
@@ -57,7 +60,7 @@ class SyncStateMachineTest {
         val byId = result.associateBy { it.key.take(8) }
 
         with(byId.getValue("36274911")) {
-            assertEquals("36274911-c6dd-490d-956d-0273df409847", key)
+            assertEquals(hausaufgabe, key)
             assertEquals("Hausaufgabe Jugendkultur Vokabeln", title)
             assertEquals("German Y12 2026/27 LKP", className)
             assertEquals("Learn new vocabulary p 67, 3.3", description)
@@ -81,20 +84,39 @@ class SyncStateMachineTest {
 
         assertEquals(0 to 10, progress.first())
         assertEquals(10 to 10, progress.last())
-        assertEquals(10, device.cardClicks)
+        assertEquals(10, device.opened.size)
         assertIs<Screen.List>(device.screen)
     }
 
     @Test
-    fun `only ever clicks tabs and assignment cards`() = runTest {
+    fun `only ever presses tabs and assignment cards`() = runTest {
         val device = FakeTeamsDevice()
         machine(device).run(emptyList())
-        assertTrue(device.clicked.isNotEmpty())
+        assertTrue(device.pressed.isNotEmpty())
         assertTrue(
-            device.clicked.all { id -> Tab.entries.any { it.viewId == id } || TeamsSelectors.CARD_ID.matches(id) },
-            device.clicked.toString(),
+            device.pressed.all { id -> Tab.entries.any { it.viewId == id } || TeamsSelectors.CARD_ID.matches(id) },
+            device.pressed.toString(),
         )
-        assertTrue(Tab.Completed.viewId !in device.clicked)
+        assertFalse(Tab.Completed.viewId in device.pressed)
+    }
+
+    @Test
+    fun `taps visible cards and tabs rather than using click actions`() = runTest {
+        // On the phone, Teams ignored every accessibility click but responded to taps.
+        val device = FakeTeamsDevice()
+        machine(device).run(emptyList())
+        assertTrue(hausaufgabe in device.tappedTargets)
+        assertFalse(hausaufgabe in device.clicked)
+        assertTrue(Tab.PastDue.viewId in device.tappedTargets)
+        assertFalse(Tab.PastDue.viewId in device.clicked)
+    }
+
+    @Test
+    fun `falls back to the click action when taps do nothing`() = runTest {
+        val device = FakeTeamsDevice().apply { tapsOpenCards = false }
+        val result = machine(device).run(emptyList())
+        assertEquals(10, result.size)
+        assertTrue(hausaufgabe in device.clicked)
     }
 
     @Test
@@ -104,7 +126,7 @@ class SyncStateMachineTest {
         val device = FakeTeamsDevice()
         val second = machine(device).run(previous = first)
 
-        assertEquals(0, device.cardClicks)
+        assertTrue(device.opened.isEmpty(), device.opened.toString())
         assertEquals(first.associate { it.key to it.description }, second.associate { it.key to it.description })
         assertEquals(first.associate { it.key to it.className }, second.associate { it.key to it.className })
     }
@@ -114,7 +136,7 @@ class SyncStateMachineTest {
         val first = machine(FakeTeamsDevice()).run(emptyList())
         val device = FakeTeamsDevice()
         machine(device).run(previous = first, full = true)
-        assertEquals(10, device.cardClicks)
+        assertEquals(10, device.opened.size)
     }
 
     @Test
@@ -123,53 +145,73 @@ class SyncStateMachineTest {
             .map { it.copy(detailReadAt = clock.millis() - TimeUnit.DAYS.toMillis(4)) }
         val device = FakeTeamsDevice()
         machine(device).run(previous = stale)
-        assertEquals(10, device.cardClicks)
+        assertEquals(10, device.opened.size)
     }
 
     @Test
     fun `a changed row is reread`() = runTest {
         val first = machine(FakeTeamsDevice()).run(emptyList())
-        val edited = first.map { if (it.key.startsWith("36274911")) it.copy(dueAt = 0) else it }
+        val edited = first.map { if (it.key == hausaufgabe) it.copy(dueAt = 0) else it }
         val device = FakeTeamsDevice()
         machine(device).run(previous = edited)
-        assertEquals(listOf("36274911-c6dd-490d-956d-0273df409847"), device.clicked.filter { TeamsSelectors.CARD_ID.matches(it) })
+        assertEquals(listOf(hausaufgabe), device.opened)
     }
 
     @Test
-    fun `falls back to a tap when the click is swallowed`() = runTest {
-        val device = FakeTeamsDevice().apply { swallowClicks["36274911-c6dd-490d-956d-0273df409847"] = 1 }
-        val result = machine(device).run(emptyList())
+    fun `a changed row that fails to open is retried on the next sync`() = runTest {
+        // Codex review: keeping the old read time made the changed row look fresh for days.
+        val first = machine(FakeTeamsDevice()).run(emptyList())
+        val changed = first.map { if (it.key == worksheet) it.copy(dueAt = 0) else it }
 
-        assertEquals(1, device.tapped.size)
-        val (x, y) = device.tapped.single()
-        assertTrue(x in 213..942 && y in 868..1009, "tap ($x, $y) should land on the card title")
-        assertEquals("Learn new vocabulary p 67, 3.3", result.single { it.key.startsWith("36274911") }.description)
+        val failing = FakeTeamsDevice().apply {
+            tapsOpenCards = false
+            swallowClicks[worksheet] = Int.MAX_VALUE
+        }
+        val second = machine(failing).run(previous = changed)
+        assertNull(second.single { it.key == worksheet }.detailReadAt)
+
+        val device = FakeTeamsDevice()
+        machine(device).run(previous = second)
+        assertEquals(listOf(worksheet), device.opened)
+    }
+
+    @Test
+    fun `an unchanged row that fails to open keeps its earlier read`() = runTest {
+        val first = machine(FakeTeamsDevice()).run(emptyList())
+        val due = first.map { if (it.key == worksheet) it.copy(detailReadAt = clock.millis() - TimeUnit.DAYS.toMillis(4)) else it }
+        val failing = FakeTeamsDevice().apply {
+            tapsOpenCards = false
+            swallowClicks[worksheet] = Int.MAX_VALUE
+        }
+        val result = machine(failing).run(previous = due)
+        with(result.single { it.key == worksheet }) {
+            assertEquals(clock.millis() - TimeUnit.DAYS.toMillis(4), detailReadAt)
+            assertTrue(description.startsWith("Complete the worksheet"))
+        }
     }
 
     @Test
     fun `retries a card once before giving up on its details`() = runTest {
-        val id = "839994fb-a6a8-4f11-9ff6-bd319473a93a"
         val device = FakeTeamsDevice().apply {
-            swallowClicks[id] = 1
             tapsOpenCards = false
+            swallowClicks[worksheet] = 1
         }
         val result = machine(device).run(emptyList())
-        assertEquals(2, device.clicked.count { it == id })
-        assertNotNull(result.single { it.key == id }.detailReadAt)
+        assertEquals(2, device.clicked.count { it == worksheet })
+        assertNotNull(result.single { it.key == worksheet }.detailReadAt)
         assertTrue(log.any { "attempt 1 of 2" in it })
     }
 
     @Test
     fun `keeps the list data when a card never opens`() = runTest {
-        val id = "839994fb-a6a8-4f11-9ff6-bd319473a93a"
         val device = FakeTeamsDevice().apply {
-            swallowClicks[id] = Int.MAX_VALUE
             tapsOpenCards = false
+            swallowClicks[worksheet] = Int.MAX_VALUE
         }
         val result = machine(device).run(emptyList())
 
         assertEquals(10, result.size)
-        with(result.single { it.key == id }) {
+        with(result.single { it.key == worksheet }) {
             assertEquals("w/sheet - prepositions, cases, adjective endings", title)
             assertEquals("12.1 German 2026-27", className)
             assertEquals("", description)
@@ -181,33 +223,79 @@ class SyncStateMachineTest {
 
     @Test
     fun `keeps an earlier description when a card won't open this time`() = runTest {
-        val id = "839994fb-a6a8-4f11-9ff6-bd319473a93a"
-        val earlier = Assignment(key = id, title = "old", className = "old", description = "Earlier instructions")
+        val earlier = Assignment(key = worksheet, title = "old", className = "old", description = "Earlier instructions")
         val device = FakeTeamsDevice().apply {
-            swallowClicks[id] = Int.MAX_VALUE
             tapsOpenCards = false
+            swallowClicks[worksheet] = Int.MAX_VALUE
         }
         val result = machine(device).run(previous = listOf(earlier))
-        assertEquals("Earlier instructions", result.single { it.key == id }.description)
+        assertEquals("Earlier instructions", result.single { it.key == worksheet }.description)
+    }
+
+    @Test
+    fun `a card on both tabs is kept under the later one`() = runTest {
+        // Codex review: a deadline passing between the two list reads puts a card on both tabs.
+        val device = FakeTeamsDevice(
+            lists = mapOf(
+                Tab.Forthcoming to "list_forthcoming",
+                Tab.PastDue to "list_past_due_with_moved_cards",
+                Tab.Completed to "list_completed",
+            ),
+        )
+        val result = machine(device).run(emptyList())
+
+        assertEquals(10, result.size)
+        assertEquals(AssignmentTab.PastDue, result.single { it.key == hausaufgabe }.tab)
+        assertEquals(1, device.opened.count { it == hausaufgabe })
+    }
+
+    @Test
+    fun `tries the tab again when Teams ignores the first tap`() = runTest {
+        val device = FakeTeamsDevice().apply { ignoreTabTaps = 1 }
+        val result = machine(device).run(emptyList())
+        assertEquals(10, result.size)
+        assertTrue(log.any { "Past due tab selected on attempt 2" in it }, log.joinToString("\n"))
+    }
+
+    @Test
+    fun `taps the tab a second time when its click is ignored too`() = runTest {
+        val device = FakeTeamsDevice().apply {
+            ignoreTabTaps = 1
+            swallowTabClicks = 1
+        }
+        val result = machine(device).run(emptyList())
+        assertEquals(10, result.size)
+        assertTrue(log.any { "Past due tab selected on attempt 3" in it }, log.joinToString("\n"))
+        // The centre of the Past due tab, [396,306][660,401] in the capture.
+        assertEquals(listOf(528 to 353, 528 to 353), device.tapped.filterIndexed { i, _ -> device.tappedTargets[i] == Tab.PastDue.viewId }.take(2))
+    }
+
+    @Test
+    fun `probes for more cards only when the list runs off screen`() = runTest {
+        val device = FakeTeamsDevice()
+        machine(device).run(emptyList())
+        // Forthcoming runs past the bottom of the screen, so one scroll is tried; Past due ends on screen.
+        assertEquals(listOf(UiAction.ScrollForward), device.scrolls)
     }
 
     @Test
     fun `stops when the user leaves Teams`() = runTest {
         val device = FakeTeamsDevice().apply {
-            afterAction = { if (it.cardClicks == 3) it.screen = Screen.OtherApp }
+            afterAction = { if (it.opened.size == 3) it.screen = Screen.OtherApp }
         }
         val abort = assertFailsWith<SyncAbort> { machine(device).run(emptyList()) }
-        assertEquals("Teams was closed", abort.reason)
+        assertEquals(SyncAbort.LEFT_TEAMS, abort.reason)
+        assertTrue(abort.byUser)
     }
 
     @Test
     fun `stops when cancelled`() = runTest {
         val device = FakeTeamsDevice()
         val abort = assertFailsWith<SyncAbort> {
-            machine(device, isCancelled = { device.cardClicks >= 2 }).run(emptyList())
+            machine(device, isCancelled = { device.opened.size >= 2 }).run(emptyList())
         }
-        assertEquals("Cancelled", abort.reason)
-        assertEquals(2, device.cardClicks)
+        assertEquals(SyncAbort.CANCELLED, abort.reason)
+        assertEquals(2, device.opened.size)
     }
 
     @Test
@@ -216,6 +304,7 @@ class SyncStateMachineTest {
             machine(FakeTeamsDevice(), config = AutomationConfig(globalTimeoutMs = 8_000)).run(emptyList())
         }
         assertEquals("Took too long", abort.reason)
+        assertFalse(abort.byUser)
     }
 
     @Test
@@ -234,9 +323,7 @@ class SyncStateMachineTest {
 
     @Test
     fun `backs out when Teams resumes on a detail screen`() = runTest {
-        val device = FakeTeamsDevice().apply {
-            launchLandsOn = Screen.Detail("36274911-c6dd-490d-956d-0273df409847", Tab.Forthcoming)
-        }
+        val device = FakeTeamsDevice().apply { launchLandsOn = Screen.Detail(hausaufgabe, Tab.Forthcoming) }
         val result = machine(device).run(emptyList())
         assertEquals(10, result.size)
     }

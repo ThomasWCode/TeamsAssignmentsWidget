@@ -84,6 +84,39 @@ class TeamsScreensTest {
     }
 
     @Test
+    fun `a collapsed title may itself contain a due phrase`() {
+        // Codex review: the card's own due line is the last one, so the title keeps its "Due at".
+        fun node(text: String, id: String = "", children: List<FakeNode> = emptyList()) = FakeNode(
+            className = "android.view.View", text = text, contentDescription = "", viewId = id,
+            bounds = IntRect(0, 0, 100, 100), isClickable = false, isScrollable = false, isSelected = false,
+            children = children, onAction = { _, _ -> false },
+        )
+        val root = node(
+            "",
+            children = listOf(
+                node("12 Oct"),
+                node("Homework Due at 09:00 Due at 10:00 Maths", id = "12345678-1234-1234-1234-123456789abc"),
+            ),
+        )
+
+        val card = TeamsScreens.cards(root).single()
+        assertEquals("Homework Due at 09:00", card.title)
+        assertEquals("Due at 10:00", card.dueLine)
+        assertEquals("Maths", card.className)
+        assertTrue(card.collapsed)
+    }
+
+    @Test
+    fun `knows whether the list ends on screen`() {
+        val probe = object : TeamsAutomation(FakeTeamsDevice(), AutomationConfig(), { 0L }, {}, { false }) {
+            fun ends(fixture: String) = Fixtures.load(fixture).let { listEndsOnScreen(it, TeamsScreens.cards(it)) }
+        }
+        assertFalse(probe.ends("list_forthcoming")) // the last cards are below the fold
+        assertTrue(probe.ends("list_forthcoming_scrolled")) // scrolled to the end
+        assertTrue(probe.ends("list_past_due")) // three cards and a footer
+    }
+
+    @Test
     fun `completed cards are marked handed in`() {
         val cards = cards("list_completed")
         assertEquals(30, cards.size)

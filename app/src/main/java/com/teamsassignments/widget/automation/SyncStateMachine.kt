@@ -62,7 +62,10 @@ class SyncStateMachine(
         return results
     }
 
-    /** Reads both open tabs. A card listed on both (its deadline passed mid-sync) counts once. */
+    /**
+     * Reads both open tabs. A card listed on both (its deadline passed between the two reads)
+     * counts once, under the later tab, Past due, which is where it now lives.
+     */
     private suspend fun collectLists(): List<Listed> {
         val found = LinkedHashMap<String, Listed>()
         var previousTabIds = emptySet<String>()
@@ -75,17 +78,19 @@ class SyncStateMachine(
             previousTabIds = cards.map { it.id }.toSet()
             val open = cards.filterNot { it.isHandedIn }
             log("${tab.label}: ${open.size} not handed in")
-            open.forEach { found.putIfAbsent(it.id, Listed(tab, it)) }
+            open.forEach { found[it.id] = Listed(tab, it) }
         }
         return found.values.toList()
     }
 
     /**
      * Teams currently puts every card in the tree, off-screen ones included. In case a future
-     * version virtualises the list, scroll down while new cards keep appearing, then back up.
+     * version virtualises the list (where every row in the tree *is* on screen), scroll down while
+     * new cards keep appearing, then back up. Skipped only when the list visibly ends on screen.
      */
     private suspend fun collectMore(tab: Tab, firstPage: List<ListCard>): List<ListCard> {
-        if (firstPage.none { it.bounds.isEmpty }) return firstPage // everything is on screen already
+        val root = device.teamsRoot() ?: return firstPage
+        if (listEndsOnScreen(root, firstPage)) return firstPage
         val cards = LinkedHashMap<String, ListCard>().apply { firstPage.forEach { put(it.id, it) } }
         var scrolls = 0
         while (scrolls < config.maxScrolls) {
@@ -97,8 +102,9 @@ class SyncStateMachine(
             page.forEach { cards.putIfAbsent(it.id, it) }
             if (cards.size == before) break
         }
-        if (scrolls > 0) {
-            device.teamsRoot()?.let { TeamsScreens.findCard(it, firstPage.first().id) }?.perform(UiAction.ShowOnScreen)
+        val top = cards.keys.firstOrNull()
+        if (scrolls > 0 && top != null) {
+            device.teamsRoot()?.let { TeamsScreens.findCard(it, top) }?.perform(UiAction.ShowOnScreen)
         }
         return cards.values.toList()
     }
@@ -162,13 +168,22 @@ class SyncStateMachine(
             dueText = detail?.dueText ?: listOfNotNull(card.headerDate, card.dueLine).joinToString(" · "),
             dueAt = detailDueAt ?: listDueAt,
             tab = tab.toAssignmentTab(),
-            detailReadAt = if (detail != null) wallClock() else old?.detailReadAt,
+            // An earlier read only stays valid while the row is unchanged; otherwise the next
+            // sync must try the details again rather than trust stale ones for days.
+            detailReadAt = when {
+                detail != null -> wallClock()
+                old != null && rowUnchanged(old, card, listDueAt) -> old.detailReadAt
+                else -> null
+            },
             lastSyncedAt = wallClock(),
         )
     }
 
     private fun isFresh(old: Assignment, card: ListCard, listDueAt: Long?): Boolean {
         val readAt = old.detailReadAt ?: return false
-        return wallClock() - readAt < detailReuseMs && old.title == card.title && old.dueAt == listDueAt
+        return wallClock() - readAt < detailReuseMs && rowUnchanged(old, card, listDueAt)
     }
+
+    private fun rowUnchanged(old: Assignment, card: ListCard, listDueAt: Long?): Boolean =
+        old.title == card.title && old.dueAt == listDueAt
 }

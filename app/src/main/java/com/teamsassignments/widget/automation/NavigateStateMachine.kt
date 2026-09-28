@@ -22,6 +22,9 @@ class NavigateStateMachine(
         log("Opening \"${target.title}\"")
         openAssignments()
 
+        // A GUID identifies exactly one assignment. Matching by title is only for the rare card
+        // saved without one: with a GUID, a same-titled card (weekly "Prep") must never stand in.
+        val hasGuid = TeamsSelectors.CARD_ID.matches(target.key)
         val first = TeamsSelectors.tabFor(target.tab)
         val tabs = listOf(first) + TeamsSelectors.OPEN_TABS.filter { it != first }
         var previousTabIds = emptySet<String>()
@@ -32,11 +35,17 @@ class NavigateStateMachine(
                 continue
             }
             previousTabIds = cards.map { it.id }.toSet()
-            val card = cards.firstOrNull { it.id == target.key }
-                ?: cards.firstOrNull { it.title == target.title && (it.className == target.className || it.collapsed) }
-                ?: continue
+            val id = if (hasGuid) {
+                target.key
+            } else {
+                cards.firstOrNull { it.title == target.title && (it.className == target.className || it.collapsed) }?.id
+                    ?: continue
+            }
+            // Verify against the card's current title, in case it was renamed since the last sync.
+            // openCard also scrolls for a card that isn't in the tree, should the list be virtualised.
+            val expectedTitle = cards.firstOrNull { it.id == id }?.title ?: target.title
             val detail = try {
-                openCard(card.id, card.title)
+                openCard(id, expectedTitle)
             } catch (_: StepTimeout) {
                 null
             }

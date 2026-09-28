@@ -48,9 +48,13 @@ object TeamsSelectors {
     /** Separator between a card's due line and an optional tag chip. */
     const val SEPARATOR = "•"
 
-    /** A card that collapsed into one node after its detail screen was visited. */
+    /**
+     * A card that collapsed into one node after its detail screen was visited:
+     * `<title> Due at 08:30 <class>`. The title group is greedy, so the *last* due phrase is taken
+     * as the card's, keeping a title like `Homework Due at 09:00` intact.
+     */
     val COLLAPSED_CARD = Regex(
-        """^(.+?) ((?:Due|Submitted|Handed in|Turned in)(?: at)? \d{1,2}[:.]\d{2}(?: ?[AaPp]\.?[Mm]\.?)?)(?: (.+))?$""",
+        """^(.+) ((?:Due|Submitted|Handed in|Turned in)(?: at)? \d{1,2}[:.]\d{2}(?: ?[AaPp]\.?[Mm]\.?)?)(?: (.+))?$""",
     )
 
     /** Group header date, `28 Sept` / `1 Oct` (en-GB) or `Sep 28` (en-US). */
