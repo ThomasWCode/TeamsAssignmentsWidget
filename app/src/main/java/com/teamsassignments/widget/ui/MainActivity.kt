@@ -49,7 +49,9 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -79,6 +81,7 @@ import com.teamsassignments.widget.data.SyncLog
 import com.teamsassignments.widget.data.SyncStatus
 import com.teamsassignments.widget.data.WidgetState
 import com.teamsassignments.widget.data.groupIntoSections
+import kotlinx.coroutines.delay
 import java.io.File
 import java.time.Clock
 import java.time.Instant
@@ -232,7 +235,20 @@ private fun AssignmentsCard(state: WidgetState) {
     val clock = remember { Clock.systemDefaultZone() }
     val parser = remember { DueDateParser(clock) }
     val formatter = remember { DueFormatter(clock, Locale.getDefault(), DateFormat.is24HourFormat(context)) }
-    val sections = remember(state.assignments) { groupIntoSections(state.assignments, parser) }
+    // Sections depend on the time as well as the list ("Tomorrow" becomes "Today", deadlines
+    // pass), so regroup every minute and whenever the screen comes back.
+    var minute by remember { mutableLongStateOf(currentMinute()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000 - System.currentTimeMillis() % 60_000)
+            minute = currentMinute()
+        }
+    }
+    LifecycleResumeEffect(Unit) {
+        minute = currentMinute()
+        onPauseOrDispose { }
+    }
+    val sections = remember(state.assignments, minute) { groupIntoSections(state.assignments, parser) }
 
     SectionCard("Assignments (${state.assignments.size})") {
         sections.forEach { section ->
@@ -287,7 +303,7 @@ private fun TroubleshootingCard(connected: Boolean, running: Boolean, latestDump
     SectionCard("Troubleshooting") {
         Text(
             "If syncing breaks after a Teams update, capture the screen it gets stuck on and share the file. " +
-                "Failed syncs also save a capture automatically.",
+                "A sync that fails by itself (rather than being cancelled) also saves a capture.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -352,6 +368,8 @@ private fun Step(done: Boolean, title: String, body: String, actions: @Composabl
         }
     }
 }
+
+private fun currentMinute() = System.currentTimeMillis() / 60_000
 
 private fun statusLine(context: Context, state: WidgetState): String {
     val lastGood = state.lastSuccessAt?.let { "last synced ${formatWhen(context, it)}" }

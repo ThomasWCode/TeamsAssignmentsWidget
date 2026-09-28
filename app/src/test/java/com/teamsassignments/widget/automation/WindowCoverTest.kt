@@ -19,7 +19,7 @@ class WindowCoverTest {
     private val cardTitle = 577 to 938
 
     private fun covering(windows: List<WindowInfo>, point: Pair<Int, Int>) =
-        WindowCover.coveringWindow(windows, point.first, point.second)
+        WindowCover.coveringWindow(windows, point.first, point.second, ownPackage = "com.teamsassignments.widget")
 
     @Test
     fun `the status bar, navigation bar and our own pill don't block taps on Teams`() {
@@ -52,6 +52,15 @@ class WindowCoverTest {
         val windows = listOf(teams, keyboard)
         assertNull(covering(windows, cardTitle))
         assertEquals(keyboard, covering(windows, 577 to 1834))
+    }
+
+    @Test
+    fun `another accessibility service's floating button blocks what it covers`() {
+        // Codex review: only our own overlay may be tapped through; another service's is its own control.
+        val menuButton = WindowInfo(TYPE_ACCESSIBILITY_OVERLAY, layer = 41, IntRect(380, 300, 680, 420), "com.samsung.accessibility")
+        val windows = listOf(teams, statusBar, pill, menuButton)
+        assertEquals(menuButton, covering(windows, pastDueTab))
+        assertNull(covering(windows, cardTitle))
     }
 
     @Test

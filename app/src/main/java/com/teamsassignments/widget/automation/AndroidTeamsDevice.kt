@@ -47,7 +47,7 @@ class AndroidTeamsDevice(private val service: AccessibilityService) : TeamsDevic
     override fun foregroundPackage(): String? {
         val windows = windowInfos()
         val app = WindowCover.topApp(windows) ?: return service.rootInActiveWindow?.packageName?.toString()
-        return (WindowCover.coveringWindow(windows, app.bounds.centerX, app.bounds.centerY) ?: app).packageName
+        return (WindowCover.coveringWindow(windows, app.bounds.centerX, app.bounds.centerY, service.packageName) ?: app).packageName
     }
 
     private fun topAppWindow(): AccessibilityWindowInfo? =
@@ -78,10 +78,11 @@ class AndroidTeamsDevice(private val service: AccessibilityService) : TeamsDevic
 
     /**
      * Taps a point, unless another window (the notification shade, a heads-up notification, the
-     * keyboard) covers it: an injected tap goes to whatever is on top, never through it.
+     * keyboard, another service's floating button) covers it: an injected tap goes to whatever
+     * is on top, never through it.
      */
     override suspend fun tap(x: Int, y: Int): Boolean {
-        if (WindowCover.coveringWindow(windowInfos(), x, y) != null) return false
+        if (WindowCover.coveringWindow(windowInfos(), x, y, service.packageName) != null) return false
         return suspendCancellableCoroutine { continuation ->
             val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
             val gesture = GestureDescription.Builder()
