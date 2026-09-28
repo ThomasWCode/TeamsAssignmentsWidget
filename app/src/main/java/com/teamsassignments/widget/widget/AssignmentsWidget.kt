@@ -44,6 +44,7 @@ import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
+import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.teamsassignments.widget.R
@@ -252,9 +253,17 @@ private fun Message(title: String, body: String, modifier: GlanceModifier = Glan
     ) {
         Text(
             title,
-            style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium),
+            style = TextStyle(
+                color = GlanceTheme.colors.onSurface,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+            ),
         )
         Spacer(GlanceModifier.height(4.dp))
-        Text(body, style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 13.sp))
+        Text(
+            body,
+            style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant, fontSize = 13.sp, textAlign = TextAlign.Center),
+        )
     }
 }
