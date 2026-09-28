@@ -21,7 +21,7 @@ Tapping a row opens Teams and taps that assignment's card for you. Cards are fou
 - It **only presses tabs and assignment cards**. It never presses a button, and never *Hand in*, *Attach* or anything else that changes Teams. Taps go to the centre of a card's title, and are refused if a button, the notification shade or the keyboard covers that spot.
 - It only acts when you tap ↻ or a row. Otherwise it ignores everything, and it only receives events from Teams.
 - Everything stays on the phone: a small JSON file in the app's private storage, with nothing backed up or sent anywhere.
-- If a sync fails or you cancel it, the previous list stays and the widget says why.
+- If a sync fails or you cancel it, the previous list stays and the widget says what happened.
 
 ## Install
 
@@ -46,7 +46,7 @@ Then tap **↻**, and leave the phone alone until it returns to the home screen.
 | Symptom | What to do |
 |---|---|
 | Widget says *Tap to finish setup* | The accessibility service is off (Samsung sometimes turns it off). Open the app and switch it on again. |
-| *Last sync failed: Teams was closed* | Something came over Teams mid-sync: another app, the notification shade, a call. Just sync again. |
+| *Sync stopped* | Teams went out of view mid-sync: you went Home or to another app, pulled down the notification shade, or a call came in. The list is from the time shown. Just sync again. |
 | *Last sync failed: Couldn't read the … list* or similar | Teams may have changed its layout. See below. |
 | Wrong or missing details | Run **Full resync** in the app. |
 
