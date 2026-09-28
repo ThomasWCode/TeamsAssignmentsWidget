@@ -142,14 +142,36 @@ Instructions are the nodes between `Instructions` and the first of `Reference ma
 
 ## Safety
 
-The automation only ever clicks **tab nodes** (`tab-*`) and **assignment cards** (a GUID id).
-As a second guard, it refuses any node whose text or content-desc matches hand-in, turn-in, submit, attach, delete or similar.
+The automation only ever presses **tab nodes** (`tab-*`) and **assignment cards** (a GUID id), and never anything whose class is a `Button`.
+As a second guard, it refuses a tab whose label matches hand-in, turn-in, submit, attach, delete or similar.
 The `HAND IN` / `HAND IN LATE` toolbar button and the `Open Attach menu` / `Open New menu` buttons are the dangerous controls on the detail screen.
+
+Gesture taps (see below) have extra rules:
+
+- A tap lands in the centre of the card's title (or the tab), below the tab bar.
+- It is refused if that point is inside any button or dangerous control outside the target.
+- It is also refused while any window above Teams covers the point, such as the notification shade, a heads-up notification or the keyboard.
+- The progress pill sits over Teams' toolbar, so the toolbar area (where Hand in lives) is never reachable by a stray tap.
+
+## Behaviour on the phone (first live syncs)
+
+Findings from running the service itself, after Phase 0:
+
+- **Teams ignores accessibility click actions.** `performAction(ACTION_CLICK)` on a tab or card returns `true` and does nothing, every time. An injected gesture tap (`dispatchGesture`) at the node's centre works every time. The workflows therefore tap first, with the click action only as a fallback, and verify every press (tab selected? detail screen open?).
+- `ACTION_SHOW_ON_SCREEN` does scroll an off-screen card into view, so it can then be tapped.
+- A full read of all 10 assignments matched Teams exactly: titles, classes, due times and instructions.
+
+Not yet seen, and worth capturing with **Dump Teams screen** when they turn up:
+
+- An **empty** Forthcoming or Past due tab. For now an empty list is believed only after holding for 2 s (6 s if that tab had work at the last sync) with no loading indicator.
+- What Teams shows **while a tab loads**. A spinner surfaces as a `ProgressBar` node, and an exact "Loading" label is also treated as loading.
+
+Some test fixtures are **derived** from the captures rather than captured: `list_past_due_with_moved_cards`, `list_past_due_stale_rows`, `list_past_due_empty`, `list_past_due_loading` and `detail_unreadable`. Each builds a state that's hard to catch live (a card on both tabs, a tab selected before its rows load, an empty or loading list, an unreadable detail screen) by editing a real capture. [`scripts/derive_fixtures.py`](../scripts/derive_fixtures.py) regenerates them after fresh captures.
 
 ## Consequences for the plan
 
 1. The sync reads **Forthcoming then Past due**. Completed is ignored, and any card whose due line says `Submitted` is skipped defensively.
 2. The assignment **key is the card GUID**.
-3. **Row tap → open**: the service opens Assignments, selects the tab the assignment was last seen in (falling back to the other one), finds the card by GUID, scrolls it on screen and clicks it. Matching by GUID replaces the plan's match on title and class.
+3. **Row tap → open**: the service opens Assignments, selects the tab the assignment was last seen in (falling back to the other one), finds the card by GUID, scrolls it on screen and taps it. Matching by GUID replaces the plan's match on title and class.
 4. The due date is built from the date header + `Due at HH:MM` in the list, with the year inferred as the nearest date to now. The detail screen's due text is authoritative when it parses.
 5. The class name comes from the detail toolbar when available, otherwise from the card.
