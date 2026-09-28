@@ -29,7 +29,16 @@ object TeamsLauncher {
         false
     }
 
-    fun playStoreIntent(): Intent =
-        Intent(Intent.ACTION_VIEW, "market://details?id=${TeamsSelectors.TEAMS_PACKAGE}".toUri())
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    /** Opens Teams' store page: in a store app if there is one, else on the web. False if neither opens. */
+    fun openStorePage(context: Context): Boolean {
+        val id = TeamsSelectors.TEAMS_PACKAGE
+        return listOf("market://details?id=$id", "https://play.google.com/store/apps/details?id=$id").any { page ->
+            try {
+                context.startActivity(Intent(Intent.ACTION_VIEW, page.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                true
+            } catch (_: ActivityNotFoundException) {
+                false
+            }
+        }
+    }
 }

@@ -22,20 +22,21 @@ class OpenAssignmentActivity : ComponentActivity() {
         val key = intent.getStringExtra(EXTRA_KEY)
         lifecycleScope.launch {
             val service = TeamsAutomationService.awaitInstance(this@OpenAssignmentActivity)
-            val started = key != null && service?.openAssignment(key) == true
-            if (!started) {
-                TeamsLauncher.launchAssignments(this@OpenAssignmentActivity)
-                if (service == null) {
-                    Toast.makeText(
-                        this@OpenAssignmentActivity,
-                        "Turn on Teams Assignments sync to jump straight to an assignment",
-                        Toast.LENGTH_LONG,
-                    ).show()
+            when {
+                // A sync (or another tap) is driving Teams: leave it alone rather than
+                // yanking Teams back to the list underneath it.
+                service?.isBusy == true -> toast("Still syncing. Try again in a moment.")
+                key != null && service?.openAssignment(key) == true -> Unit
+                else -> {
+                    TeamsLauncher.launchAssignments(this@OpenAssignmentActivity)
+                    if (service == null) toast("Turn on Teams Assignments sync to jump straight to an assignment")
                 }
             }
             finish()
         }
     }
+
+    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 
     companion object {
         private const val EXTRA_KEY = "assignment_key"

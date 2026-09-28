@@ -3,6 +3,7 @@ package com.teamsassignments.widget.automation
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import kotlinx.coroutines.channels.Channel
@@ -23,23 +24,46 @@ class AndroidTeamsDevice(private val service: AccessibilityService) : TeamsDevic
 
     override fun launchAssignments(): Boolean = TeamsLauncher.launchAssignments(service)
 
-    override fun teamsRoot(): UiNode? = teamsWindowRoot()?.let { AndroidUiNode.snapshot(it) }
+    /**
+     * A snapshot of Teams' window. A tree too big to copy whole ends the run rather than pass as
+     * complete: a sync saves what it reads, and a cut-off list would drop assignments.
+     */
+    override fun teamsRoot(): UiNode? {
+        val root = teamsWindowRoot() ?: return null
+        val snapshot = AndroidUiNode.snapshot(root)
+        if (!snapshot.complete) throw SyncAbort("Teams showed more than can be read at once")
+        return snapshot.root
+    }
 
     /** The root of Teams' window, but only while Teams is the app on top. */
     fun teamsWindowRoot(): AccessibilityNodeInfo? =
-        topAppRoot()?.takeIf { it.packageName == TeamsSelectors.TEAMS_PACKAGE }
-
-    override fun foregroundPackage(): String? = topAppRoot()?.packageName?.toString()
+        topAppWindow()?.root?.takeIf { it.packageName == TeamsSelectors.TEAMS_PACKAGE }
 
     /**
-     * The topmost application window. System windows (the notification shade) and our own
-     * overlay aren't application windows, so they don't count as the user leaving Teams.
+     * The app the user is looking at. A system window over the middle of the screen, such as the
+     * notification shade, counts too: the user has pulled something over Teams, so the workflow
+     * treats it like leaving Teams (it waits, then stops) rather than working underneath it.
      */
-    private fun topAppRoot(): AccessibilityNodeInfo? {
-        val window = service.windows
-            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-            .maxByOrNull { it.layer }
-        return window?.root ?: service.rootInActiveWindow
+    override fun foregroundPackage(): String? {
+        val windows = windowInfos()
+        val app = WindowCover.topApp(windows) ?: return service.rootInActiveWindow?.packageName?.toString()
+        return (WindowCover.coveringWindow(windows, app.bounds.centerX, app.bounds.centerY) ?: app).packageName
+    }
+
+    private fun topAppWindow(): AccessibilityWindowInfo? =
+        service.windows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }.maxByOrNull { it.layer }
+
+    private fun windowInfos(): List<WindowInfo> {
+        val rect = Rect()
+        return service.windows.map { window ->
+            window.getBoundsInScreen(rect)
+            WindowInfo(
+                type = window.type,
+                layer = window.layer,
+                bounds = IntRect(rect.left, rect.top, rect.right, rect.bottom),
+                packageName = window.root?.packageName?.toString(),
+            )
+        }
     }
 
     override suspend fun awaitChange(timeoutMs: Long) {
@@ -52,21 +76,28 @@ class AndroidTeamsDevice(private val service: AccessibilityService) : TeamsDevic
 
     override fun home(): Boolean = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
 
-    override suspend fun tap(x: Int, y: Int): Boolean = suspendCancellableCoroutine { continuation ->
-        val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
-        val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, TAP_MS))
-            .build()
-        val callback = object : AccessibilityService.GestureResultCallback() {
-            override fun onCompleted(gestureDescription: GestureDescription?) {
-                if (continuation.isActive) continuation.resume(true)
-            }
+    /**
+     * Taps a point, unless another window (the notification shade, a heads-up notification, the
+     * keyboard) covers it: an injected tap goes to whatever is on top, never through it.
+     */
+    override suspend fun tap(x: Int, y: Int): Boolean {
+        if (WindowCover.coveringWindow(windowInfos(), x, y) != null) return false
+        return suspendCancellableCoroutine { continuation ->
+            val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
+            val gesture = GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(path, 0, TAP_MS))
+                .build()
+            val callback = object : AccessibilityService.GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription?) {
+                    if (continuation.isActive) continuation.resume(true)
+                }
 
-            override fun onCancelled(gestureDescription: GestureDescription?) {
-                if (continuation.isActive) continuation.resume(false)
+                override fun onCancelled(gestureDescription: GestureDescription?) {
+                    if (continuation.isActive) continuation.resume(false)
+                }
             }
+            if (!service.dispatchGesture(gesture, callback, null) && continuation.isActive) continuation.resume(false)
         }
-        if (!service.dispatchGesture(gesture, callback, null) && continuation.isActive) continuation.resume(false)
     }
 
     private companion object {
