@@ -1,6 +1,7 @@
 package com.teamsassignments.widget.ui
 
 import android.annotation.SuppressLint
+import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -81,6 +82,7 @@ import com.teamsassignments.widget.data.SyncLog
 import com.teamsassignments.widget.data.SyncStatus
 import com.teamsassignments.widget.data.WidgetState
 import com.teamsassignments.widget.data.groupIntoSections
+import com.teamsassignments.widget.widget.AssignmentsWidgetReceiver
 import kotlinx.coroutines.delay
 import java.io.File
 import java.time.Clock
@@ -117,6 +119,7 @@ private data class SetupChecks(
     val teamsInstalled: Boolean,
     val serviceEnabled: Boolean,
     val batteryUnrestricted: Boolean,
+    val widgetPlaced: Boolean,
 ) {
     companion object {
         fun read(context: Context) = SetupChecks(
@@ -124,9 +127,12 @@ private data class SetupChecks(
             serviceEnabled = TeamsAutomationService.isEnabled(context),
             batteryUnrestricted = context.getSystemService(PowerManager::class.java)
                 .isIgnoringBatteryOptimizations(context.packageName),
+            widgetPlaced = AppWidgetManager.getInstance(context).getAppWidgetIds(widgetProvider(context)).isNotEmpty(),
         )
     }
 }
+
+private fun widgetProvider(context: Context) = ComponentName(context, AssignmentsWidgetReceiver::class.java)
 
 @Composable
 private fun SetupScreen() {
@@ -205,6 +211,13 @@ private fun SetupCard(checks: SetupChecks, connected: Boolean) {
                 "and add Teams Assignments under Settings → Battery → Background usage limits → Never sleeping apps.",
         ) {
             OutlinedButton(onClick = { requestUnrestrictedBattery(context) }) { Text("Allow") }
+        }
+        Step(
+            done = checks.widgetPlaced,
+            title = "Add the widget to your home screen",
+            body = "Tap Add widget, or long-press the home screen and find Teams Assignments under Widgets.",
+        ) {
+            Button(onClick = { requestPinWidget(context) }) { Text("Add widget") }
         }
     }
 }
@@ -411,6 +424,14 @@ private fun openServiceSettings(context: Context) {
 
 private fun appInfoIntent(context: Context) =
     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${context.packageName}".toUri())
+
+/** Asks the launcher to place the widget; the launcher shows its own confirmation. */
+private fun requestPinWidget(context: Context) {
+    val manager = AppWidgetManager.getInstance(context)
+    if (!manager.isRequestPinAppWidgetSupported || !manager.requestPinAppWidget(widgetProvider(context), null, null)) {
+        Toast.makeText(context, "Long-press the home screen and add it from Widgets", Toast.LENGTH_LONG).show()
+    }
+}
 
 @SuppressLint("BatteryLife") // Sideloaded app; the user confirms in the system dialog.
 private fun requestUnrestrictedBattery(context: Context) {
