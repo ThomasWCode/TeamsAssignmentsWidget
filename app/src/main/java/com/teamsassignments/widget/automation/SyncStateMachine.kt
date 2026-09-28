@@ -63,8 +63,9 @@ class SyncStateMachine(
     }
 
     /**
-     * Reads both open tabs. A card listed on both (its deadline passed between the two reads)
-     * counts once, under the later tab, Past due, which is where it now lives.
+     * Reads both open tabs. A card listed on both counts once, under the later tab, Past due,
+     * which is where it now lives. Teams lists work that fell due earlier today on both, and a
+     * deadline can also pass between the two reads.
      */
     private suspend fun collectLists(previous: List<Assignment>): List<Listed> {
         val found = LinkedHashMap<String, Listed>()

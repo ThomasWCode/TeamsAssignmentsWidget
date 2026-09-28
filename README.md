@@ -87,6 +87,13 @@ scripts/       derive_fixtures.py: builds the edge-case fixtures from the captur
 
 [`PLAN.md`](PLAN.md) is the original design. [`docs/teams-ui-notes.md`](docs/teams-ui-notes.md) records what the real Teams UI looks like, and where it differed from the plan.
 
+**Tested on** a Samsung Galaxy S24 (Android 16, One UI). Checked there:
+- full and routine syncs, including ↻ from the widget and a row tap opening the right assignment;
+- a sync stopped by Cancel, by going Home, and by pulling down the notification shade;
+- the service switched off and back on;
+- light and dark themes;
+- resizing down to the launcher's smallest size, 3×2.
+
 ## Known limitations
 
 - **Tied to the Teams app's layout and English (en-GB) wording.** An update to Teams can break syncing until `TeamsSelectors.kt` is updated.
