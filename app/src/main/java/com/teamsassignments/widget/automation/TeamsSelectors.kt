@@ -66,9 +66,12 @@ object TeamsSelectors {
      */
     val LOADING_LABEL = Regex("""^Loading(\.\.\.|…)?$""", RegexOption.IGNORE_CASE)
 
-    /** Group header label next to the date. */
+    /**
+     * Group header label next to the date: `Today`, `Wednesday`, `Due 2 days ago`, or
+     * `Due earlier today` for work that passed its time this morning.
+     */
     val GROUP_LABEL = Regex(
-        """^(Today|Tomorrow|Yesterday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|(Due )?\d{1,3} days? ago)$""",
+        """^((Due )?((earlier|later) )?today|Tomorrow|Yesterday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|(Due )?\d{1,3} days? ago)$""",
         RegexOption.IGNORE_CASE,
     )
 

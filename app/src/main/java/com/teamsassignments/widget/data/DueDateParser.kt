@@ -157,7 +157,7 @@ class DueDateParser(private val clock: Clock) {
         val HEADER_DAY_MONTH = Regex("""^$OPTIONAL_WEEKDAY(\d{1,2}) $MONTH(?: (\d{4}))?$""", I)
         val HEADER_MONTH_DAY = Regex("""^$OPTIONAL_WEEKDAY$MONTH (\d{1,2})(?:,? (\d{4}))?$""", I)
         val LABEL_DAYS_AGO = Regex("""^(?:due )?(\d{1,3}) days? ago$""", I)
-        val LABEL_RELATIVE = Regex("""^(?:due )?(today|tomorrow|yesterday)$""", I)
+        val LABEL_RELATIVE = Regex("""^(?:due )?(?:(?:earlier|later) )?(today|tomorrow|yesterday)$""", I)
         val LABEL_WEEKDAY = Regex("""^($WEEKDAYS)$""", I)
     }
 }

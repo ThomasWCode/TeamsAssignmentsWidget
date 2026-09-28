@@ -49,6 +49,12 @@ object TeamsScreens {
 
     fun selectedTab(root: UiNode): Tab? = Tab.entries.firstOrNull { root.findById(it.viewId)?.isSelected == true }
 
+    /**
+     * Whether Teams' window is fully in place. While a screen slides in, its window reports an
+     * offset: captured on the phone mid-Back as `[-337,0][743,2340]` instead of `[0,0][1080,2340]`.
+     */
+    fun windowAtRest(root: UiNode): Boolean = root.bounds.left >= 0 && root.bounds.top >= 0
+
     /** Whether Teams is showing a loading indicator: a spinner, or a bare "Loading" label. */
     fun isLoading(root: UiNode): Boolean = root.walk().any {
         it.className.endsWith("ProgressBar") || TeamsSelectors.LOADING_LABEL.matches(it.label.squash())
