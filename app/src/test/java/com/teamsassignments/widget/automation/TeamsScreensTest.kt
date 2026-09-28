@@ -83,14 +83,55 @@ class TeamsScreensTest {
         assertEquals("Further Maths Year 12 (Mechanics mixed) RGAB", pastDue.className)
     }
 
+    /** A hand-built node, for shapes the captures don't happen to contain. */
+    private fun node(text: String, id: String = "", children: List<FakeNode> = emptyList()) = FakeNode(
+        className = "android.view.View", text = text, contentDescription = "", viewId = id,
+        bounds = IntRect(0, 0, 100, 100), isClickable = false, isScrollable = false, isSelected = false,
+        children = children, onAction = { _, _ -> false },
+    )
+
+    @Test
+    fun `an assignment called Instructions keeps its real instructions`() {
+        // Codex review: the heading search must start after the title and due line.
+        val root = node(
+            "",
+            children = listOf(
+                node(
+                    "",
+                    id = TeamsSelectors.DETAIL_CONTAINER,
+                    children = listOf(
+                        node("Not handed in"),
+                        node(
+                            "",
+                            children = listOf(
+                                node("Instructions"),
+                                node("Due tomorrow at 09:00"),
+                                node("Instructions"),
+                                node("Read chapter 3"),
+                                node("My work"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val detail = TeamsScreens.detail(root)!!
+        assertEquals("Instructions", detail.title)
+        assertEquals("Due tomorrow at 09:00", detail.dueText)
+        assertEquals("Read chapter 3", detail.instructions)
+    }
+
+    @Test
+    fun `spots a loading spinner but not a title that starts with Loading`() {
+        assertTrue(TeamsScreens.isLoading(Fixtures.load("list_past_due_loading")))
+        assertFalse(TeamsScreens.isLoading(Fixtures.load("list_forthcoming")))
+        assertFalse(TeamsScreens.isLoading(node("", children = listOf(node("Loading and unloading forces")))))
+        assertTrue(TeamsScreens.isLoading(node("", children = listOf(node("Loading…")))))
+    }
+
     @Test
     fun `a collapsed title may itself contain a due phrase`() {
         // Codex review: the card's own due line is the last one, so the title keeps its "Due at".
-        fun node(text: String, id: String = "", children: List<FakeNode> = emptyList()) = FakeNode(
-            className = "android.view.View", text = text, contentDescription = "", viewId = id,
-            bounds = IntRect(0, 0, 100, 100), isClickable = false, isScrollable = false, isSelected = false,
-            children = children, onAction = { _, _ -> false },
-        )
         val root = node(
             "",
             children = listOf(

@@ -49,6 +49,11 @@ object TeamsScreens {
 
     fun selectedTab(root: UiNode): Tab? = Tab.entries.firstOrNull { root.findById(it.viewId)?.isSelected == true }
 
+    /** Whether Teams is showing a loading indicator: a spinner, or a bare "Loading" label. */
+    fun isLoading(root: UiNode): Boolean = root.walk().any {
+        it.className.endsWith("ProgressBar") || TeamsSelectors.LOADING_LABEL.matches(it.label.squash())
+    }
+
     /** Every card in the tree, in list order, with the group header each sits under. */
     fun cards(root: UiNode): List<ListCard> {
         val cards = mutableListOf<ListCard>()
@@ -148,12 +153,15 @@ object TeamsScreens {
             else -> 0
         }.takeIf { it != statusIndex && it in texts.indices }
 
+        // Look for the Instructions heading only after the title and due line, in case an
+        // assignment is itself called "Instructions".
+        val headerEnd = maxOf(titleIndex ?: -1, dueIndex)
         return DetailScreen(
             className = root.findById(TeamsSelectors.TOOLBAR_TITLE)?.text?.squash()?.takeIf { it.isNotEmpty() },
             status = texts.getOrNull(statusIndex),
             title = titleIndex?.let(texts::get)?.takeIf { it.isNotEmpty() },
             dueText = texts.getOrNull(dueIndex),
-            instructions = instructions(tokens),
+            instructions = instructions(tokens, from = headerEnd + 1),
         )
     }
 
@@ -175,9 +183,9 @@ object TeamsScreens {
      * - list markers (`1)`, `1.`, `•`) are separate nodes and start a new line;
      * - nodes whose text is only a line break are line breaks.
      */
-    private fun instructions(tokens: List<Token>): String {
-        val start = tokens.indexOfFirst { it.text.squash() == TeamsSelectors.INSTRUCTIONS_HEADING }
-        if (start < 0) return ""
+    private fun instructions(tokens: List<Token>, from: Int): String {
+        val start = (from until tokens.size).firstOrNull { tokens[it].text.squash() == TeamsSelectors.INSTRUCTIONS_HEADING }
+            ?: return ""
         val heading = tokens[start].bounds
         val body = tokens.drop(start + 1).takeWhile { it.text.squash() !in TeamsSelectors.DETAIL_SECTION_HEADINGS }
 
