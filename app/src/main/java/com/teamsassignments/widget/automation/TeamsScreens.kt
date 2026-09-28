@@ -85,29 +85,33 @@ object TeamsScreens {
     fun findCard(root: UiNode, id: String): UiNode? =
         root.walk().firstOrNull { it.viewId == id && TeamsSelectors.CARD_ID.matches(it.viewId) }
 
+    /** The title a card node shows now (collapsed or not). */
+    fun cardTitle(card: UiNode): String? = parseCard(card, headerDate = null, headerLabel = null)?.title
+
     private fun parseCard(card: UiNode, headerDate: String?, headerLabel: String?): ListCard? {
         if (card.children.isEmpty()) return parseCollapsedCard(card, headerDate, headerLabel)
 
-        val texts = card.walk()
+        val leaves = card.walk()
             .drop(1)
             .filter { it.children.isEmpty() && !it.viewId.startsWith(TeamsSelectors.CARD_HOVER_ACTION_ID_PREFIX) }
-            .map { it.text.squash() }
-            .filter { it.isNotEmpty() }
+            .filter { it.text.squash().isNotEmpty() }
             .toList()
-        val title = card.walk()
-            .firstOrNull { it.viewId.startsWith(TeamsSelectors.CARD_TITLE_ID_PREFIX) }
-            ?.text?.squash()?.takeIf { it.isNotEmpty() }
-            ?: texts.firstOrNull()
+        val titleNode = card.walk()
+            .firstOrNull { it.viewId.startsWith(TeamsSelectors.CARD_TITLE_ID_PREFIX) && it.text.squash().isNotEmpty() }
+            ?: leaves.firstOrNull()
             ?: return null
+        val title = titleNode.text.squash()
 
-        val dueIndex = texts.indexOfFirst { TeamsSelectors.CARD_STATUS_LINE.matches(it) }
-        val afterDue = texts.drop(if (dueIndex >= 0) dueIndex + 1 else 1)
-            .filter { it != TeamsSelectors.SEPARATOR && it != title }
+        // Everything under the title, excluding the title node itself: a title such as
+        // "Submitted report analysis" must not be mistaken for the status line.
+        val lines = leaves.filter { it !== titleNode }.map { it.text.squash() }
+        val dueIndex = lines.indexOfFirst { TeamsSelectors.CARD_STATUS_LINE.matches(it) }
+        val afterDue = lines.drop(dueIndex + 1).filter { it != TeamsSelectors.SEPARATOR }
 
         return ListCard(
             id = card.viewId,
             title = title,
-            dueLine = texts.getOrNull(dueIndex).orEmpty(),
+            dueLine = lines.getOrNull(dueIndex).orEmpty(),
             // The class is the last line; anything between the due line and it is a tag chip.
             className = afterDue.lastOrNull().orEmpty(),
             tag = afterDue.dropLast(1).joinToString(" ").ifEmpty { null },

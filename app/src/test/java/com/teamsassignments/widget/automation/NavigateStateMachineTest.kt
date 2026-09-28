@@ -85,6 +85,15 @@ class NavigateStateMachineTest {
     }
 
     @Test
+    fun `opens a card renamed since the last sync`() = runTest {
+        // Codex review: the check is against the title the card shows now, not the saved one.
+        val id = "4c958b24-de6c-429b-846b-1d02d0cbed0b"
+        val device = FakeTeamsDevice()
+        assertTrue(navigate(device).run(assignment(id, "Physics test (old name)", AssignmentTab.Forthcoming)))
+        assertEquals(Screen.Detail(id, Tab.Forthcoming), device.screen)
+    }
+
+    @Test
     fun `taps a card again when the first tap is missed`() = runTest {
         // Codex review: Teams ignores click actions, so one missed tap mustn't lose the assignment.
         val id = "4c958b24-de6c-429b-846b-1d02d0cbed0b"

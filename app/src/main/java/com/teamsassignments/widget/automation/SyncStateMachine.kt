@@ -68,17 +68,17 @@ class SyncStateMachine(
      */
     private suspend fun collectLists(previous: List<Assignment>): List<Listed> {
         val found = LinkedHashMap<String, Listed>()
-        var previousTabIds = emptySet<String>()
+        var previousTab = emptyList<ListCard>()
         for (tab in TeamsSelectors.OPEN_TABS) {
             val cards = try {
                 // A tab that had work at the last sync and now looks empty may just be slow to load.
                 val hadWork = previous.any { it.tab == tab.toAssignmentTab() }
                 val emptySettle = if (hadWork) config.suspectEmptySettleMs else config.emptySettleMs
-                selectTab(tab, previousTabIds, emptySettle).let { collectMore(tab, it) }
+                selectTab(tab, previousTab, emptySettle).let { collectMore(tab, it) }
             } catch (_: StepTimeout) {
                 throw SyncAbort("Couldn't read the ${tab.label} list")
             }
-            previousTabIds = cards.map { it.id }.toSet()
+            previousTab = cards
             val open = cards.filterNot { it.isHandedIn }
             log("${tab.label}: ${open.size} not handed in")
             open.forEach { found[it.id] = Listed(tab, it) }

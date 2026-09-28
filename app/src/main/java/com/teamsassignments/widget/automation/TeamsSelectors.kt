@@ -80,7 +80,11 @@ object TeamsSelectors {
     /** The native toolbar title: the class name on the detail screen, `Assignments` on the list. */
     const val TOOLBAR_TITLE = "action_bar_title_text"
 
-    val DETAIL_DUE = Regex("""^Due\b.*""", RegexOption.IGNORE_CASE)
+    /**
+     * The detail screen's due line. Every format Teams uses includes a time ("Due today at
+     * 08:00", "Due 30 September 2026 08:30"), which keeps a title like "Due process essay" out.
+     */
+    val DETAIL_DUE = Regex("""^Due\b.*\b\d{1,2}[:.]\d{2}\b.*""", RegexOption.IGNORE_CASE)
     val DETAIL_STATUS = Regex(
         """^(Not handed in|Not turned in|Handed in.*|Turned in.*|Submitted.*|Returned.*|Graded.*|Missing|Late)$""",
         RegexOption.IGNORE_CASE,

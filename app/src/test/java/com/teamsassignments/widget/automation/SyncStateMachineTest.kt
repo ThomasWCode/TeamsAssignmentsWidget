@@ -262,6 +262,34 @@ class SyncStateMachineTest {
     }
 
     @Test
+    fun `a single card that moved tabs between the two reads still settles`() = runTest {
+        // Codex review: its only card makes Past due look like Forthcoming's rows, but the list changed.
+        val device = FakeTeamsDevice(
+            lists = mapOf(
+                Tab.Forthcoming to "list_forthcoming_single",
+                Tab.PastDue to "list_past_due_single_moved",
+                Tab.Completed to "list_completed",
+            ),
+        )
+        val result = machine(device).run(emptyList())
+        assertEquals(listOf(hausaufgabe), result.map { it.key })
+        assertEquals(AssignmentTab.PastDue, result.single().tab)
+    }
+
+    @Test
+    fun `gives up rather than guess when the new tab never changes`() = runTest {
+        val device = FakeTeamsDevice(
+            lists = mapOf(
+                Tab.Forthcoming to "list_forthcoming",
+                Tab.PastDue to "list_past_due_stale_rows",
+                Tab.Completed to "list_completed",
+            ),
+        )
+        val abort = assertFailsWith<SyncAbort> { machine(device).run(emptyList()) }
+        assertEquals("Couldn't read the Past due list", abort.reason)
+    }
+
+    @Test
     fun `waits while the list shows a spinner`() = runTest {
         val device = FakeTeamsDevice(now = { testScheduler.currentTime }).apply {
             slowTabs[Tab.PastDue] = "list_past_due_loading" to 5_000L
