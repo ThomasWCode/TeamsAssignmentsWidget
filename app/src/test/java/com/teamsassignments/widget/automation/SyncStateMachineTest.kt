@@ -262,6 +262,19 @@ class SyncStateMachineTest {
     }
 
     @Test
+    fun `waits for a sliding screen to settle before tapping`() = runTest {
+        // Seen on the phone: after Back from an assignment, the list slid in 337 px to the left and
+        // the Forthcoming tab was tapped at a negative x, which crashed the sync.
+        val device = FakeTeamsDevice(now = { testScheduler.currentTime }).apply { backTransition = -337 to 400L }
+        val result = machine(device).run(emptyList())
+
+        assertEquals(10, result.size)
+        assertTrue(device.tapped.all { (x, y) -> x >= 0 && y >= 0 }, device.tapped.toString())
+        assertTrue(device.tappedTargets.none { it.isEmpty() }, "every tap should land on a tab or card")
+        assertTrue(Tab.Forthcoming.viewId in device.tappedTargets)
+    }
+
+    @Test
     fun `a single card that moved tabs between the two reads still settles`() = runTest {
         // Codex review: its only card makes Past due look like Forthcoming's rows, but the list changed.
         val device = FakeTeamsDevice(

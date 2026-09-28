@@ -18,6 +18,13 @@ class FakeNode(
 ) : UiNode {
     override fun perform(action: UiAction): Boolean = onAction(this, action)
     override fun toString(): String = describe()
+
+    /** The same tree [dx] pixels to the side, as Teams reports it while a screen slides in. */
+    fun shifted(dx: Int): FakeNode = FakeNode(
+        className, text, contentDescription, viewId,
+        bounds.copy(left = bounds.left + dx, right = bounds.right + dx),
+        isClickable, isScrollable, isSelected, children.map { it.shifted(dx) }, onAction,
+    )
 }
 
 /** Loads the Phase 0 captures in `src/test/resources/fixtures/teams`. */
