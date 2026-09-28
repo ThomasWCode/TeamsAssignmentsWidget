@@ -11,6 +11,12 @@ import kotlinx.coroutines.launch
 class AssignmentsWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = AssignmentsWidget()
 
+    /** The last widget was removed: stop the midnight/deadline redraws. */
+    override fun onDisabled(context: Context) {
+        WidgetUpdater.cancelRedraw(context)
+        super.onDisabled(context)
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != WidgetUpdater.ACTION_REDRAW) {
             super.onReceive(context, intent)
