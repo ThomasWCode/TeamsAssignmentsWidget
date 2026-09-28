@@ -130,7 +130,7 @@ abstract class TeamsAutomation(
      */
     protected suspend fun selectTab(
         tab: Tab,
-        previousTabIds: Set<String> = emptySet(),
+        previousTab: List<ListCard> = emptyList(),
         emptySettleMs: Long = config.emptySettleMs,
     ): List<ListCard> {
         for ((i, how) in TAB_PRESSES.withIndex()) {
@@ -143,7 +143,7 @@ abstract class TeamsAutomation(
             }
             log("${tab.label} tab didn't switch (attempt ${i + 1} of ${TAB_PRESSES.size})")
         }
-        return awaitSettledList(tab, previousTabIds, emptySettleMs)
+        return awaitSettledList(tab, previousTab, emptySettleMs)
     }
 
     private suspend fun awaitTabSelected(tab: Tab): Boolean = try {
@@ -157,17 +157,21 @@ abstract class TeamsAutomation(
     /**
      * Waits for [tab]'s list to finish loading, which matters because a sync saves whatever this
      * returns. Teams can mark a tab selected before its rows are replaced, so:
-     * - the previous tab's rows, still showing, are never taken as this tab's (an assignment is
-     *   on one tab only), however long they stay;
+     * - rows exactly matching the previous tab's ([previousTab]) aren't taken as this tab's until
+     *   the list has visibly changed at least once (to other rows, to empty, or to a spinner).
+     *   That still lets a card that moved tabs between the two reads through, since the list
+     *   changed on the way;
      * - nothing counts while a loading indicator shows;
      * - an empty list must hold for [emptySettleMs] before it is believed.
      * If it never settles, the step times out and the caller keeps the data it had.
      */
     protected suspend fun awaitSettledList(
         tab: Tab,
-        previousTabIds: Set<String> = emptySet(),
+        previousTab: List<ListCard> = emptyList(),
         emptySettleMs: Long = config.emptySettleMs,
     ): List<ListCard> {
+        val oldRows = previousTab.map { it.withoutPosition() }
+        var changed = oldRows.isEmpty()
         var lastIds: List<String>? = null
         var stableSince = 0L
         return awaitScreen("the ${tab.label} list", config.stepTimeoutMs + emptySettleMs) { root ->
@@ -176,18 +180,23 @@ abstract class TeamsAutomation(
                 return@awaitScreen null
             }
             val cards = TeamsScreens.cards(root)
+            val loading = TeamsScreens.isLoading(root)
+            if (loading || cards.map { it.withoutPosition() } != oldRows) changed = true
             val ids = cards.map { it.id }
             val t = now()
-            if (ids != lastIds || TeamsScreens.isLoading(root)) {
+            if (ids != lastIds || loading) {
                 lastIds = ids
                 stableSince = t
                 return@awaitScreen null
             }
-            if (ids.isNotEmpty() && ids.toSet() == previousTabIds) return@awaitScreen null // the old tab's rows
+            if (!changed) return@awaitScreen null // still the previous tab's rows
             val needed = if (ids.isEmpty()) emptySettleMs else config.settleMs
             cards.takeIf { t - stableSince >= needed }
         }
     }
+
+    /** A card's content, ignoring where it happens to be scrolled to. */
+    private fun ListCard.withoutPosition() = copy(bounds = IntRect.EMPTY)
 
     /**
      * Whether the list visibly ends on screen: the last card sits above the bottom of the
@@ -209,6 +218,9 @@ abstract class TeamsAutomation(
             log("Card $id is not on the list")
             return null
         }
+        // Check the detail screen against the title the card shows now; the caller's may be from
+        // an earlier sync, before a teacher renamed it.
+        val expected = TeamsScreens.cardTitle(card) ?: expectedTitle
         card.perform(UiAction.ShowOnScreen)
 
         var detail: DetailScreen? = null
@@ -236,8 +248,8 @@ abstract class TeamsAutomation(
             backToList()
             return null
         }
-        if (detail != null && expectedTitle != null && !sameTitle(detail.title, expectedTitle)) {
-            log("Opened \"${detail.title}\" instead of \"$expectedTitle\"")
+        if (detail != null && expected != null && !sameTitle(detail.title, expected)) {
+            log("Opened \"${detail.title}\" instead of \"$expected\"")
             backToList()
             return null
         }

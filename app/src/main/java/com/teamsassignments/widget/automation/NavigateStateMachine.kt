@@ -27,25 +27,25 @@ class NavigateStateMachine(
         val hasGuid = TeamsSelectors.CARD_ID.matches(target.key)
         val first = TeamsSelectors.tabFor(target.tab)
         val tabs = listOf(first) + TeamsSelectors.OPEN_TABS.filter { it != first }
-        var previousTabIds = emptySet<String>()
+        var previousTab = emptyList<ListCard>()
         for (tab in tabs) {
             val cards = try {
-                selectTab(tab, previousTabIds)
+                selectTab(tab, previousTab)
             } catch (_: StepTimeout) {
                 continue
             }
-            previousTabIds = cards.map { it.id }.toSet()
+            previousTab = cards
             val id = if (hasGuid) {
                 target.key
             } else {
                 cards.firstOrNull { it.title == target.title && (it.className == target.className || it.collapsed) }?.id
                     ?: continue
             }
-            // Verify against the card's current title, in case it was renamed since the last sync.
-            // openCard also scrolls for a card that isn't in the tree, should the list be virtualised.
-            val expectedTitle = cards.firstOrNull { it.id == id }?.title ?: target.title
+            // openCard scrolls for a card that isn't in the tree (should the list be virtualised)
+            // and checks the detail screen against the title the card shows now, so a card renamed
+            // since the last sync still opens; the saved title is only a fallback.
             val detail = try {
-                openCard(id, expectedTitle)
+                openCard(id, target.title)
             } catch (_: StepTimeout) {
                 null
             }

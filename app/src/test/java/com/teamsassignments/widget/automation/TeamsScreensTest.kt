@@ -122,6 +122,56 @@ class TeamsScreensTest {
     }
 
     @Test
+    fun `a card title starting with a status word isn't mistaken for the status line`() {
+        // Codex review: "Submitted report analysis" would have read as handed in and been dropped.
+        val card = node(
+            "",
+            id = "12345678-1234-1234-1234-123456789abc",
+            children = listOf(
+                node("Submitted report analysis", id = "${TeamsSelectors.CARD_TITLE_ID_PREFIX}EDUASSIGN-r1"),
+                node("Due at 09:00"),
+                node("Chemistry 12C"),
+            ),
+        )
+        val parsed = TeamsScreens.cards(node("", children = listOf(node("2 Oct"), card))).single()
+        assertEquals("Submitted report analysis", parsed.title)
+        assertEquals("Due at 09:00", parsed.dueLine)
+        assertEquals("Chemistry 12C", parsed.className)
+        assertFalse(parsed.isHandedIn)
+    }
+
+    @Test
+    fun `a detail title starting with Due isn't mistaken for the due line`() {
+        // Codex review: "Due process essay" would have left the title unreadable.
+        val root = node(
+            "",
+            children = listOf(
+                node(
+                    "",
+                    id = TeamsSelectors.DETAIL_CONTAINER,
+                    children = listOf(
+                        node("Not handed in"),
+                        node(
+                            "",
+                            children = listOf(
+                                node("Due process essay"),
+                                node("Due tomorrow at 09:00"),
+                                node("Instructions"),
+                                node("Write 500 words"),
+                                node("My work"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val detail = TeamsScreens.detail(root)!!
+        assertEquals("Due process essay", detail.title)
+        assertEquals("Due tomorrow at 09:00", detail.dueText)
+        assertEquals("Write 500 words", detail.instructions)
+    }
+
+    @Test
     fun `spots a loading spinner but not a title that starts with Loading`() {
         assertTrue(TeamsScreens.isLoading(Fixtures.load("list_past_due_loading")))
         assertFalse(TeamsScreens.isLoading(Fixtures.load("list_forthcoming")))
