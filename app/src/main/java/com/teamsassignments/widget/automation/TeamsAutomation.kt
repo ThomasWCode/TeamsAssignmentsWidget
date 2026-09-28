@@ -136,8 +136,13 @@ abstract class TeamsAutomation(
         for ((i, how) in TAB_PRESSES.withIndex()) {
             val root = awaitScreen("the ${tab.label} tab") { it.takeIf { r -> TeamsScreens.tabNode(r, tab) != null } }
             if (TeamsScreens.selectedTab(root) == tab) break
-            val node = TeamsScreens.tabNode(root, tab) ?: continue
-            if (press(root, node, node.bounds, how) && awaitTabSelected(tab)) {
+            val pressed = press(
+                what = "the ${tab.label} tab",
+                how = how,
+                locate = { TeamsScreens.tabNode(it, tab) },
+                area = { _, node -> node.bounds },
+            )
+            if (pressed && awaitTabSelected(tab)) {
                 if (i > 0) log("${tab.label} tab selected on attempt ${i + 1}")
                 break
             }
@@ -223,14 +228,15 @@ abstract class TeamsAutomation(
         val expected = TeamsScreens.cardTitle(card) ?: expectedTitle
         card.perform(UiAction.ShowOnScreen)
 
+        // Only ever press while the list is showing: a detail screen that opened late would have
+        // its own buttons where the card was.
+        val cardOnList: (UiNode) -> UiNode? = { root ->
+            if (TeamsScreens.isList(root) && !TeamsScreens.isDetail(root)) TeamsScreens.findCard(root, id) else null
+        }
         var detail: DetailScreen? = null
         for (how in CARD_PRESSES) {
-            // Press only while the list is showing: a detail screen that opened late would have
-            // its own buttons where the card was.
-            val root = awaitCardOnScreen(id) ?: break
-            val target = TeamsScreens.findCard(root, id) ?: break
-            if (!press(root, target, cardTapArea(root, target), how)) {
-                log("${target.describe()}: the ${how.name.lowercase()} didn't go through")
+            if (!press("the card", how, cardOnList, ::cardTapArea)) {
+                log("Card $id: the ${how.name.lowercase()} didn't go through")
                 continue
             }
             detail = awaitDetail()
@@ -239,7 +245,7 @@ abstract class TeamsAutomation(
                 detail = awaitDetail() // it opened, just slowly
                 break
             }
-            log("${target.describe()} didn't open (${how.name.lowercase()})")
+            log("Card $id didn't open (${how.name.lowercase()})")
         }
 
         if (detail == null && device.teamsRoot()?.let(TeamsScreens::isDetail) == true) {
@@ -256,20 +262,24 @@ abstract class TeamsAutomation(
         return detail
     }
 
-    /** The list, once the card has stopped moving after being scrolled into view. */
-    private suspend fun awaitCardOnScreen(id: String): UiNode? {
-        var lastBounds: IntRect? = null
+    /**
+     * The screen once [locate]'s node has stopped moving: the same bounds in two snapshots in a
+     * row, in a window that isn't partly off screen. Screens slide when Teams changes them (seen
+     * on the phone after Back from an assignment: every position shifted left by 337 px), and a tap
+     * taken from a mid-slide snapshot would miss, or be rejected for a negative position. Null if
+     * the node doesn't come to rest in time.
+     */
+    private suspend fun awaitAtRest(what: String, locate: (UiNode) -> UiNode?): UiNode? {
+        var last: IntRect? = null
         return try {
-            awaitScreen("the card to come into view", config.settleMs * 3) { root ->
-                if (!TeamsScreens.isList(root) || TeamsScreens.isDetail(root)) return@awaitScreen null
-                val bounds = TeamsScreens.findCard(root, id)?.bounds ?: return@awaitScreen null
-                val settled = bounds == lastBounds && !bounds.isEmpty
-                lastBounds = bounds
-                root.takeIf { settled }
+            awaitScreen("$what to come to rest", config.settleMs * 3) { root ->
+                val bounds = locate(root)?.bounds
+                val atRest = bounds != null && bounds == last && !bounds.isEmpty && TeamsScreens.windowAtRest(root)
+                last = bounds
+                root.takeIf { atRest }
             }
         } catch (_: StepTimeout) {
-            // Still off screen (or never stopped moving): return the list; the press falls back to a click.
-            device.teamsRoot()?.takeIf { TeamsScreens.isList(it) && !TeamsScreens.isDetail(it) }
+            null
         }
     }
 
@@ -344,15 +354,31 @@ abstract class TeamsAutomation(
     }
 
     /**
-     * Taps [node] inside [area], or uses its click action when [how] says so or nowhere is safe to
-     * tap. Returns false when the press didn't go through, so the caller needn't wait for it.
+     * Presses the tab or card that [locate] finds on the current screen. A tap needs the target at
+     * rest (see [awaitAtRest]) and a safe point inside [area]; failing either, or when [how] says
+     * so, the target's click action is used. Returns false when the press didn't go through, so the
+     * caller needn't wait for it.
      */
-    private suspend fun press(root: UiNode, node: UiNode, area: IntRect, how: Press): Boolean {
-        requirePressable(node)
-        val point = if (how == Press.Tap) safeTapPoint(root, node, area) else null
-        if (point == null) return click(node)
-        log("Tap ${node.describe()}")
-        return device.tap(point.first, point.second)
+    private suspend fun press(
+        what: String,
+        how: Press,
+        locate: (UiNode) -> UiNode?,
+        area: (root: UiNode, target: UiNode) -> IntRect,
+    ): Boolean {
+        if (how == Press.Tap) {
+            val root = awaitAtRest(what, locate)
+            val target = root?.let(locate)
+            if (root != null && target != null) {
+                requirePressable(target)
+                val point = safeTapPoint(root, target, area(root, target))
+                if (point != null) {
+                    log("Tap ${target.describe()}")
+                    return device.tap(point.first, point.second)
+                }
+            }
+        }
+        val target = device.teamsRoot()?.let(locate) ?: return false
+        return click(target)
     }
 
     /** Uses a tab's or card's click action. Anything else is refused, and ends the run. */

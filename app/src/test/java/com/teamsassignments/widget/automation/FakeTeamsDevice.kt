@@ -62,7 +62,14 @@ class FakeTeamsDevice(
     /** Detail screens to show instead of the captured ones, by card id. */
     val detailOverrides = mutableMapOf<String, String>()
 
+    /**
+     * After Back, the list slides in: shifted by this many pixels for this long. On the phone it
+     * was caught 337 px to the left, which put the Forthcoming tab's centre at a negative x.
+     */
+    var backTransition: Pair<Int, Long>? = null
+
     private var tabShownAt = 0L
+    private var backAt = Long.MIN_VALUE / 2
 
     /** Runs after every action, to script events such as the user leaving Teams. */
     var afterAction: (FakeTeamsDevice) -> Unit = {}
@@ -93,9 +100,16 @@ class FakeTeamsDevice(
     }
 
     override fun teamsRoot(): UiNode? = when (val s = screen) {
-        is Screen.List -> tree(listFixture(s.tab))
+        is Screen.List -> listOnScreen(s.tab)
         is Screen.Detail -> tree(detailOverrides[s.id] ?: detailFixture(s.id) ?: error("No detail fixture for ${s.id}"))
         else -> null
+    }
+
+    /** The list as it is on screen right now: possibly still sliding in after Back. */
+    private fun listOnScreen(tab: Tab): FakeNode {
+        val list = tree(listFixture(tab))
+        val (dx, forMs) = backTransition ?: return list
+        return if (now() - backAt < forMs) list.shifted(dx) else list
     }
 
     override fun foregroundPackage(): String = when (screen) {
@@ -108,6 +122,7 @@ class FakeTeamsDevice(
 
     override fun back(): Boolean {
         backPresses++
+        backAt = now()
         screen = when (val s = screen) {
             is Screen.Detail -> Screen.List(s.from)
             is Screen.List -> Screen.Home
@@ -124,11 +139,16 @@ class FakeTeamsDevice(
 
     override suspend fun tap(x: Int, y: Int): Boolean {
         tapped += x to y
+        // Like the real device: a point off the screen isn't tapped.
+        if (x !in 0 until SCREEN_WIDTH || y !in 0 until SCREEN_HEIGHT) {
+            tappedTargets += ""
+            return false
+        }
         val list = screen as? Screen.List
         if (list == null) {
             tappedTargets += ""
         } else {
-            val root = tree(listFixture(list.tab))
+            val root = listOnScreen(list.tab)
             val tab = Tab.entries.firstOrNull { root.findById(it.viewId)?.bounds?.contains(x, y) == true }
             val card = root.walk().firstOrNull { TeamsSelectors.CARD_ID.matches(it.viewId) && it.bounds.contains(x, y) }
             tappedTargets += tab?.viewId ?: card?.viewId ?: ""
@@ -172,6 +192,12 @@ class FakeTeamsDevice(
         }
         open(node.viewId, list.tab)
         return true
+    }
+
+    private companion object {
+        // The Galaxy S24 the fixtures were captured on.
+        const val SCREEN_WIDTH = 1080
+        const val SCREEN_HEIGHT = 2340
     }
 
     private fun open(id: String, from: Tab) {

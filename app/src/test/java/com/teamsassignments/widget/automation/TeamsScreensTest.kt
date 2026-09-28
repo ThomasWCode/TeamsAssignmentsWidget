@@ -208,6 +208,31 @@ class TeamsScreensTest {
     }
 
     @Test
+    fun `a window caught sliding in is not at rest`() {
+        // Captured on the phone mid-Back: the whole window 337 px to the left.
+        val sliding = Fixtures.load("list_past_due_mid_transition")
+        assertFalse(TeamsScreens.windowAtRest(sliding))
+        assertEquals(IntRect(-292, 306, 39, 401), TeamsScreens.tabNode(sliding, Tab.Forthcoming)!!.bounds)
+        assertTrue(TeamsScreens.windowAtRest(Fixtures.load("list_past_due_earlier_today")))
+        assertTrue(TeamsScreens.windowAtRest(Fixtures.load("list_forthcoming")))
+    }
+
+    @Test
+    fun `reads work that fell due earlier today`() {
+        // Captured on the phone at 08:56: the 08:00 homework had moved from Forthcoming to Past due.
+        val cards = cards("list_past_due_earlier_today")
+        assertEquals(listOf("36274911", "88fafeb2", "d3f67007", "d53f5f50"), cards.map { it.id.take(8) })
+        with(cards.first()) {
+            assertEquals("Hausaufgabe Jugendkultur Vokabeln", title)
+            assertEquals("28 Sept", headerDate)
+            assertEquals("Due earlier today", headerLabel)
+            assertEquals("Due at 08:00", dueLine)
+        }
+        // The same list mid-slide still reads the same.
+        assertEquals(cards.map { it.id }, cards("list_past_due_mid_transition").map { it.id })
+    }
+
+    @Test
     fun `completed cards are marked handed in`() {
         val cards = cards("list_completed")
         assertEquals(30, cards.size)
