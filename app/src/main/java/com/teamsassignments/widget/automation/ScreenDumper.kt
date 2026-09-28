@@ -15,6 +15,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.Writer
 import java.time.LocalDateTime
@@ -40,15 +41,22 @@ class ScreenDumper(
 
     fun arm() {
         watcher?.cancel()
-        // Only Teams' events reach the service, so poll to notice the user leaving Teams.
+        // Only Teams' events reach the service, so poll to notice the user leaving Teams. The
+        // poll stops after a few minutes, so an abandoned capture doesn't keep the service busy.
         watcher = scope.launch {
-            while (isActive) {
-                if (device.teamsWindowRoot() != null) {
-                    banner.show("Dump this Teams screen", "Capture", showSpinner = false) { capture() }
-                } else {
-                    banner.hide()
+            val finished = withTimeoutOrNull(ARMED_FOR_MS) {
+                while (isActive) {
+                    if (device.teamsWindowRoot() != null) {
+                        banner.show("Dump this Teams screen", "Capture", showSpinner = false) { capture() }
+                    } else {
+                        banner.hide()
+                    }
+                    delay(POLL_MS)
                 }
-                delay(POLL_MS)
+            }
+            if (finished == null) {
+                banner.hide()
+                log.add("Screen dump not captured; stopped waiting")
             }
         }
     }
@@ -140,6 +148,7 @@ class ScreenDumper(
 
     companion object {
         private const val POLL_MS = 1_000L
+        private const val ARMED_FOR_MS = 5 * 60_000L
         private const val MAX_NODES = 5_000
         private const val KEEP_DUMPS = 20
 
