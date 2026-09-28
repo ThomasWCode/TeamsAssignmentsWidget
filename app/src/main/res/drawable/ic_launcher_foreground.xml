@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Clipboard with three ticked rows, drawn inside the 66dp adaptive-icon safe zone.
+     The rows are cut out with evenOdd so the same drawable works as the monochrome layer. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M40,30h28a6,6 0,0 1,6 6v42a6,6 0,0 1,-6 6h-28a6,6 0,0 1,-6 -6v-42a6,6 0,0 1,6 -6z
+            M51,45.5h15a2,2 0,0 1,0 4h-15a2,2 0,0 1,0 -4z
+            M51,56.5h15a2,2 0,0 1,0 4h-15a2,2 0,0 1,0 -4z
+            M51,67.5h15a2,2 0,0 1,0 4h-15a2,2 0,0 1,0 -4z
+            M40.6,47.9l1.6,-1.6l1.9,1.9l3.9,-3.9l1.6,1.6l-5.5,5.5z
+            M40.6,58.9l1.6,-1.6l1.9,1.9l3.9,-3.9l1.6,1.6l-5.5,5.5z
+            M40.6,69.9l1.6,-1.6l1.9,1.9l3.9,-3.9l1.6,1.6l-5.5,5.5z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M48,24h12a3,3 0,0 1,3 3v7h-18v-7a3,3 0,0 1,3 -3z" />
+</vector>
