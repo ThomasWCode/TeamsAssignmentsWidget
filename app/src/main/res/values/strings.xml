@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Teams Assignments</string>
+
+    <string name="automation_service_label">Teams Assignments sync</string>
+    <string name="automation_service_summary">Reads your Teams assignments for the home-screen widget</string>
+    <string name="automation_service_description">When you tap refresh on the Teams Assignments widget, this opens Microsoft Teams, reads the assignments you haven\'t handed in (title, class, due date and instructions) and then returns to the home screen. Tapping an assignment on the widget uses it to open that assignment in Teams.\n\nIt only acts when you ask it to, only reads the Teams app, and never hands in, submits or changes anything. Nothing leaves your phone.</string>
 </resources>
