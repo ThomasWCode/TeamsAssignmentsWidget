@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Only Teams' events are delivered (packageNames), and the service ignores even those unless a
+  sync is running. flagReportViewIds exposes the WebView's HTML ids (tab ids, assignment GUIDs);
+  flagRetrieveInteractiveWindows lets it check which app is on top.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewScrolled"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/automation_service_description"
+    android:notificationTimeout="100"
+    android:packageNames="com.microsoft.teams"
+    android:settingsActivity="com.teamsassignments.widget.ui.MainActivity"
+    android:summary="@string/automation_service_summary" />
