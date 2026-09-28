@@ -49,6 +49,11 @@ class AssignmentStore(
         it.copy(status = SyncStatus.Failed(reason, clock.millis()))
     }
 
+    /** Records a sync the user stopped. The previous list is kept. */
+    suspend fun markStopped(cancelled: Boolean) = update {
+        it.copy(status = SyncStatus.Stopped(cancelled, clock.millis()))
+    }
+
     suspend fun saveSuccess(assignments: List<Assignment>) = update { state ->
         state.copy(
             assignments = assignments,

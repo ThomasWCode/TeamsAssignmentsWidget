@@ -14,7 +14,7 @@ class FakeTeamsDevice(
         Tab.PastDue to "list_past_due",
         Tab.Completed to "list_completed",
     ),
-    /** Virtual time, for tabs that take a while to load (see [slowTabs]). */
+    /** Virtual time, for screens that take a while to load or settle (see [slowTabs], [launchLoading]). */
     private val now: () -> Long = { 0L },
 ) : TeamsDevice {
 
@@ -68,8 +68,15 @@ class FakeTeamsDevice(
      */
     var backTransition: Pair<Int, Long>? = null
 
+    /**
+     * Just after launch, Teams shows this fixture for this long before the Assignments module has
+     * rendered. On the phone that was the toolbar over an empty WebView: no tabs, cards or spinner.
+     */
+    var launchLoading: Pair<String, Long>? = null
+
     private var tabShownAt = 0L
     private var backAt = Long.MIN_VALUE / 2
+    private var launchedAt = Long.MIN_VALUE / 2
 
     /** Runs after every action, to script events such as the user leaving Teams. */
     var afterAction: (FakeTeamsDevice) -> Unit = {}
@@ -96,6 +103,7 @@ class FakeTeamsDevice(
     override fun launchAssignments(): Boolean {
         if (!teamsInstalled) return false
         screen = launchLandsOn
+        launchedAt = now()
         return true
     }
 
@@ -107,6 +115,7 @@ class FakeTeamsDevice(
 
     /** The list as it is on screen right now: possibly still sliding in after Back. */
     private fun listOnScreen(tab: Tab): FakeNode {
+        launchLoading?.let { (loading, forMs) -> if (now() - launchedAt < forMs) return tree(loading) }
         val list = tree(listFixture(tab))
         val (dx, forMs) = backTransition ?: return list
         return if (now() - backAt < forMs) list.shifted(dx) else list

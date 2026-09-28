@@ -311,6 +311,18 @@ class SyncStateMachineTest {
     }
 
     @Test
+    fun `waits while the Assignments module is still loading`() = runTest {
+        // Captured on the phone just after launch: Teams' toolbar over an empty WebView. Taken for
+        // a list, it would read as an empty Forthcoming tab, so it lasts past both empty-list holds.
+        val device = FakeTeamsDevice(now = { testScheduler.currentTime }).apply {
+            launchLoading = "list_assignments_loading" to 8_000L
+        }
+        val result = machine(device).run(emptyList())
+        assertEquals(10, result.size)
+        assertEquals(7, result.count { it.tab == AssignmentTab.Forthcoming })
+    }
+
+    @Test
     fun `an empty tab is believed once it stays empty`() = runTest {
         val device = FakeTeamsDevice(
             lists = mapOf(
