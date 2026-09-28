@@ -13,11 +13,15 @@ import java.util.Locale
 /** The widget's words and timing, kept free of Android types so they can be unit tested. */
 object WidgetText {
 
-    /** The line under the title: sync progress, the last failure, or when it last synced. */
+    /** The line under the title: sync progress, the last failure or stop, or when it last synced. */
     fun subtitle(state: WidgetState, clock: Clock, use24Hour: Boolean, locale: Locale = Locale.getDefault()): String =
         when (val status = state.status) {
             is SyncStatus.Running -> if (status.total > 0) "Syncing ${status.done}/${status.total}…" else "Syncing…"
             is SyncStatus.Failed -> "Last sync failed: ${status.reason}"
+            // A stop the user chose keeps the time, since the list is still that sync's.
+            is SyncStatus.Stopped -> state.lastSuccessAt
+                ?.let { "${status.summary} · updated ${whenText(it, clock, use24Hour, locale)}" }
+                ?: status.summary
             SyncStatus.Idle -> state.lastSuccessAt
                 ?.let { "Updated ${whenText(it, clock, use24Hour, locale)} · ${dueCount(state.assignments.size)}" }
                 ?: "Tap ↻ to sync with Teams"

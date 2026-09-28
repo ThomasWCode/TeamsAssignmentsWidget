@@ -183,8 +183,12 @@ class TeamsAutomationService : AccessibilityService() {
             log.add("Saved ${result.size} assignments")
         } catch (e: SyncAbort) {
             log.add("Sync stopped: ${e.reason}")
-            if (!e.byUser) dumper.saveFailureDump()
-            store.markFailed(e.reason)
+            if (e.byUser) {
+                store.markStopped(cancelled = e.reason == SyncAbort.CANCELLED)
+            } else {
+                dumper.saveFailureDump()
+                store.markFailed(e.reason)
+            }
             if (e.reason == SyncAbort.LEFT_TEAMS) leaveTeams = false
         } catch (e: CancellationException) {
             withContext(NonCancellable) { store.markFailed(AssignmentStore.INTERRUPTED) }
