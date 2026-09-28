@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget picker preview, in the same roles the Glance widget uses (see values-v31 for Material You). -->
+<resources>
+    <color name="widget_preview_background">#FFE8EAF6</color>
+    <color name="widget_preview_surface">#FFFFFFFF</color>
+    <color name="widget_preview_on_surface">#FF1B1B1F</color>
+    <color name="widget_preview_on_surface_variant">#FF46464F</color>
+    <color name="widget_preview_primary">#FF4F52B2</color>
+    <color name="widget_preview_pill">#FFDFE0FF</color>
+    <color name="widget_preview_on_pill">#FF0B0D6B</color>
+</resources>
