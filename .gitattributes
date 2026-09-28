@@ -1,0 +1,9 @@
+# Normalise text to LF in the repo; Windows scripts keep CRLF on checkout.
+* text=auto eol=lf
+*.bat text eol=crlf
+gradlew text eol=lf
+
+*.jar binary
+*.keystore binary
+*.png binary
+*.jpg binary
