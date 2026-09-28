@@ -1,0 +1,19 @@
+# Gradle / build output
+.gradle/
+.kotlin/
+build/
+/captures/
+*.apk
+*.aab
+!/app/debug.keystore
+
+# Local configuration
+local.properties
+.idea/
+*.iml
+.DS_Store
+.externalNativeBuild/
+.cxx/
+
+# Screen dumps pulled from the device while debugging
+/dumps/
