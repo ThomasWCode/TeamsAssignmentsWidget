@@ -166,7 +166,7 @@ Not yet seen, and worth capturing with **Dump Teams screen** when they turn up:
 - An **empty** Forthcoming or Past due tab. For now an empty list is believed only after holding for 2 s (6 s if that tab had work at the last sync) with no loading indicator.
 - What Teams shows **while a tab loads**. A spinner surfaces as a `ProgressBar` node, and an exact "Loading" label is also treated as loading.
 
-Some test fixtures are **derived** from the captures rather than captured: `list_past_due_with_moved_cards`, `list_past_due_stale_rows`, `list_past_due_empty`, `list_past_due_loading` and `detail_unreadable`. Each builds a state that's hard to catch live (a card on both tabs, a tab selected before its rows load, an empty or loading list, an unreadable detail screen) by editing a real capture. [`scripts/derive_fixtures.py`](../scripts/derive_fixtures.py) regenerates them after fresh captures.
+Some test fixtures are **derived** from the captures rather than captured: `list_past_due_with_moved_cards`, `list_past_due_stale_rows`, `list_past_due_empty`, `list_past_due_loading`, `list_forthcoming_single`, `list_past_due_single_moved` and `detail_unreadable`. Each builds a state that's hard to catch live (a card on both tabs, a tab selected before its rows load, an empty or loading list, a single card moving tabs, an unreadable detail screen) by editing a real capture. [`scripts/derive_fixtures.py`](../scripts/derive_fixtures.py) regenerates them after fresh captures.
 
 ## Consequences for the plan
 

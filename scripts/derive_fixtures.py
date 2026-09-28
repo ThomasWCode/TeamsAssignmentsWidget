@@ -1,7 +1,8 @@
 """Builds the derived test fixtures from the real Teams captures.
 
 Some states are hard to catch on a phone: a card listed on both tabs, a tab selected before its
-rows load, an empty or loading list, a detail screen with nothing readable yet. Each is made here by
+rows load, an empty or loading list, a single card moving tabs, a detail screen with nothing
+readable yet. Each is made here by
 editing a real capture, so the node shapes stay authentic.
 
 Run from the repository root after replacing the captures:
@@ -9,6 +10,7 @@ Run from the repository root after replacing the captures:
     python scripts/derive_fixtures.py
 """
 
+import copy
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -68,6 +70,35 @@ def empty_and_loading():
     save(tree, "list_past_due_loading")
 
 
+def single_card_moved():
+    """Forthcoming with one card, and Past due showing that same card under Past due's own kind of
+    label, as when its deadline passes between the two reads."""
+    guid = "36274911-c6dd-490d-956d-0273df409847"
+    forthcoming = load("list_forthcoming")
+    rows = list_view(forthcoming)
+    for extra in list(rows)[1:]:
+        rows.remove(extra)
+    for child in list(rows[0]):
+        if len(child.get("resource-id", "")) == 36 and child.get("resource-id") != guid:
+            rows[0].remove(child)
+    save(forthcoming, "list_forthcoming_single")
+
+    past = load("list_past_due")
+    rows = list_view(past)
+    groups = [c for c in rows if c.get("class") == "android.view.View"]
+    for extra in groups[1:]:
+        rows.remove(extra)
+    group = groups[0]
+    date, label = [c for c in group if c.get("class") == "android.widget.TextView"][:2]
+    date.set("text", "28 Sept")
+    label.set("text", "Due today")
+    old_card = next(c for c in group if len(c.get("resource-id", "")) == 36)
+    moved = copy.deepcopy(next(n for n in list_view(load("list_forthcoming")).iter("node") if n.get("resource-id") == guid))
+    group.insert(list(group).index(old_card), moved)
+    group.remove(old_card)
+    save(past, "list_past_due_single_moved")
+
+
 def unreadable_detail():
     """A detail screen that has opened but shows no text yet."""
     tree = load("detail_4c958b24")
@@ -81,4 +112,5 @@ if __name__ == "__main__":
     moved_cards()
     stale_rows()
     empty_and_loading()
+    single_card_moved()
     unreadable_detail()

@@ -12,7 +12,7 @@ The official way to read assignments, the Microsoft Graph API, needs a school IT
 2. The *Teams Assignments sync* accessibility service opens Teams straight on Assignments. It reads the **Forthcoming** and **Past due** tabs (together, everything not handed in), then briefly opens each new or changed assignment for its class, exact due time and instructions.
 3. It goes back to the home screen, and the widget shows the list.
 
-A progress pill shows while it works ("Syncing assignments 3/7 · Cancel"). A first sync takes a few seconds per assignment. After that, only new or changed assignments are opened, so a routine refresh is quick. **Full resync** in the app rereads everything.
+A progress pill shows while it works ("Syncing assignments 3/7 · Cancel"). A first sync takes a few seconds per assignment. After that, an assignment is only reopened if its row has changed or its details are more than three days old. Most refreshes are quick, and every few days one rereads everything. **Full resync** in the app rereads everything straight away.
 
 Tapping a row opens Teams and taps that assignment's card for you. Cards are found by the assignment's own ID, so the right one opens even when several share a title.
 
@@ -52,11 +52,11 @@ Then tap **↻**, and leave the phone alone until it returns to the home screen.
 
 **When a Teams update breaks syncing**, the app gives you what's needed to fix it:
 
-- Every failed sync saves a capture of the screen it got stuck on.
+- A sync that fails by itself saves a capture of the screen it got stuck on. One you cancel, or leave by switching apps, doesn't.
 - **Troubleshooting → Dump Teams screen** shows a *Capture* button over Teams. Go to the screen in question, tap it, and share the file.
 - **Recent steps** lists what the automation did. The same log is in `adb logcat -s TeamsAutomation`.
 
-Captures use the same format as the test fixtures, so a new capture can go straight into `app/src/test/resources/fixtures/teams`. Every id and text the automation matches lives in one file, [`TeamsSelectors.kt`](app/src/main/java/com/teamsassignments/widget/automation/TeamsSelectors.kt). [`docs/teams-ui-notes.md`](docs/teams-ui-notes.md) describes the Teams screens as captured.
+Captures use the same format as the test fixtures, so a new capture can go straight into `app/src/test/resources/fixtures/teams`. The ids and texts the automation matches live in [`TeamsSelectors.kt`](app/src/main/java/com/teamsassignments/widget/automation/TeamsSelectors.kt). The one exception is the wording of dates ("Due tomorrow at 08:30", month names and so on), which is matched in [`DueDateParser.kt`](app/src/main/java/com/teamsassignments/widget/data/DueDateParser.kt). [`docs/teams-ui-notes.md`](docs/teams-ui-notes.md) describes the Teams screens as captured.
 
 ## Development
 
