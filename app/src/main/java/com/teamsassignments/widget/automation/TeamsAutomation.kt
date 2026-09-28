@@ -3,7 +3,15 @@ package com.teamsassignments.widget.automation
 import com.teamsassignments.widget.automation.TeamsSelectors.Tab
 
 /** Ends a run. The previous data is kept and [reason] is shown on the widget. */
-class SyncAbort(val reason: String) : Exception(reason)
+class SyncAbort(val reason: String) : Exception(reason) {
+    /** The user stopped the run themselves, by cancelling or by leaving Teams. */
+    val byUser: Boolean get() = reason == CANCELLED || reason == LEFT_TEAMS
+
+    companion object {
+        const val CANCELLED = "Cancelled"
+        const val LEFT_TEAMS = "Teams was closed"
+    }
+}
 
 /** One step didn't reach its screen in time. Recoverable: the caller may retry or skip. */
 class StepTimeout(what: String) : Exception("Timed out waiting for $what")
@@ -13,8 +21,10 @@ data class AutomationConfig(
     val pollMs: Long = 250,
     val launchTimeoutMs: Long = 20_000,
     val stepTimeoutMs: Long = 10_000,
-    /** How long to wait for a detail screen after each way of opening a card. */
+    /** How long to wait for a detail screen after each press of a card. */
     val openDetailTimeoutMs: Long = 5_000,
+    /** How long to wait for a tab to show as selected after each press. */
+    val tabSwitchTimeoutMs: Long = 2_500,
     /** How long a list or detail screen must stay unchanged to count as loaded. */
     val settleMs: Long = 600,
     /** An empty list, or one identical to the previous tab's, must stay put longer. */
@@ -34,8 +44,12 @@ data class AutomationConfig(
  * cancelled, left Teams for longer than [AutomationConfig.foregroundGraceMs], or the whole run
  * passed [AutomationConfig.globalTimeoutMs].
  *
- * Safety: the only nodes ever clicked are the tabs and assignment cards (see [click]); gesture
- * taps land inside a card and never on a button (see [safeTapPoint]).
+ * Tabs and cards are pressed with a gesture tap first. On the phone, Teams' web content ignored
+ * every accessibility click action (each returned true and did nothing) but responded to taps, so
+ * the click action is only the fallback, for a target with no safe point on screen.
+ *
+ * Safety: only tabs and assignment cards are ever pressed (see [requirePressable]), and a tap
+ * lands inside the target, never on a button or dangerous control (see [safeTapPoint]).
  */
 abstract class TeamsAutomation(
     protected val device: TeamsDevice,
@@ -48,20 +62,22 @@ abstract class TeamsAutomation(
     private var teamsSeenAt = 0L
     private var teamsShown = false
 
+    private enum class Press { Tap, Click }
+
     protected fun begin() {
         startedAt = now()
         teamsShown = false
     }
 
     protected fun checkAbort() {
-        if (isCancelled()) throw SyncAbort("Cancelled")
+        if (isCancelled()) throw SyncAbort(SyncAbort.CANCELLED)
         val t = now()
         if (t - startedAt > config.globalTimeoutMs) throw SyncAbort("Took too long")
         if (device.foregroundPackage() == TeamsSelectors.TEAMS_PACKAGE) {
             teamsShown = true
             teamsSeenAt = t
         } else if (teamsShown && t - teamsSeenAt > config.foregroundGraceMs) {
-            throw SyncAbort("Teams was closed")
+            throw SyncAbort(SyncAbort.LEFT_TEAMS)
         }
     }
 
@@ -105,13 +121,31 @@ abstract class TeamsAutomation(
         }
     }
 
-    /** Selects [tab] if needed and returns its cards once the list has finished loading. */
+    /**
+     * Selects [tab] if needed and returns its cards once the list has finished loading.
+     * Each press is checked before the next: tap, then the click action, then tap again.
+     */
     protected suspend fun selectTab(tab: Tab, previousTabIds: Set<String> = emptySet()): List<ListCard> {
-        val root = awaitScreen("the ${tab.name} tab") { root -> root.takeIf { TeamsScreens.tabNode(it, tab) != null } }
-        if (TeamsScreens.selectedTab(root) != tab) {
-            click(TeamsScreens.tabNode(root, tab) ?: throw StepTimeout("the ${tab.name} tab"))
+        for ((i, how) in TAB_PRESSES.withIndex()) {
+            val root = awaitScreen("the ${tab.label} tab") { it.takeIf { r -> TeamsScreens.tabNode(r, tab) != null } }
+            if (TeamsScreens.selectedTab(root) == tab) break
+            val node = TeamsScreens.tabNode(root, tab) ?: continue
+            press(root, node, node.bounds, how)
+            if (awaitTabSelected(tab)) {
+                if (i > 0) log("${tab.label} tab selected on attempt ${i + 1}")
+                break
+            }
+            log("${tab.label} tab didn't switch (attempt ${i + 1} of ${TAB_PRESSES.size})")
         }
         return awaitSettledList(tab, previousTabIds)
+    }
+
+    private suspend fun awaitTabSelected(tab: Tab): Boolean = try {
+        awaitScreen("the ${tab.label} tab to be selected", config.tabSwitchTimeoutMs) { root ->
+            true.takeIf { TeamsScreens.selectedTab(root) == tab }
+        }
+    } catch (_: StepTimeout) {
+        false
     }
 
     /**
@@ -121,7 +155,7 @@ abstract class TeamsAutomation(
     protected suspend fun awaitSettledList(tab: Tab, previousTabIds: Set<String> = emptySet()): List<ListCard> {
         var lastIds: List<String>? = null
         var stableSince = 0L
-        return awaitScreen("the ${tab.name} list") { root ->
+        return awaitScreen("the ${tab.label} list") { root ->
             if (TeamsScreens.selectedTab(root) != tab) {
                 lastIds = null
                 return@awaitScreen null
@@ -140,6 +174,17 @@ abstract class TeamsAutomation(
     }
 
     /**
+     * Whether the list visibly ends on screen: the last card sits above the bottom of the
+     * scrolling area, so nothing can be hidden below it. Teams currently puts every card in the
+     * tree anyway, but a virtualised list would only hold the rows in view.
+     */
+    protected fun listEndsOnScreen(root: UiNode, cards: List<ListCard>): Boolean {
+        val scroller = root.walk().firstOrNull { it.isScrollable } ?: return true
+        val last = cards.lastOrNull() ?: return false
+        return !last.bounds.isEmpty && last.bounds.bottom < scroller.bounds.bottom - LIST_END_MARGIN_PX
+    }
+
+    /**
      * Opens the card with GUID [id] on the current list and returns its detail screen, or null if
      * it didn't open or the wrong assignment opened (in which case this goes back to the list).
      */
@@ -149,25 +194,21 @@ abstract class TeamsAutomation(
             return null
         }
         card.perform(UiAction.ShowOnScreen)
-        device.awaitChange(config.pollMs)
 
-        val fresh = device.teamsRoot()?.let { TeamsScreens.findCard(it, id) } ?: card
-        click(fresh)
-        var detail = awaitDetail()
-
-        if (detail == null) {
-            // Only tap while the list is definitely still showing: a detail screen that opened
-            // late would put its own buttons where the card was.
-            val root = device.teamsRoot()?.takeIf { TeamsScreens.isList(it) && !TeamsScreens.isDetail(it) }
-            val target = root?.let { TeamsScreens.findCard(it, id) }
-            val point = if (root != null && target != null) safeTapPoint(root, target) else null
-            if (point == null) {
-                log("Click on ${fresh.describe()} did nothing and there is no safe point to tap")
-                return null
-            }
-            log("Click did nothing; tapping (${point.first}, ${point.second})")
-            device.tap(point.first, point.second)
+        var detail: DetailScreen? = null
+        for (how in CARD_PRESSES) {
+            // Press only while the list is showing: a detail screen that opened late would have
+            // its own buttons where the card was.
+            val root = awaitCardOnScreen(id) ?: break
+            val target = TeamsScreens.findCard(root, id) ?: break
+            press(root, target, cardTapArea(root, target), how)
             detail = awaitDetail()
+            if (detail != null) break
+            if (device.teamsRoot()?.let(TeamsScreens::isDetail) == true) {
+                detail = awaitDetail() // it opened, just slowly
+                break
+            }
+            log("${target.describe()} didn't open (${how.name.lowercase()})")
         }
 
         if (detail != null && expectedTitle != null && !sameTitle(detail.title, expectedTitle)) {
@@ -176,6 +217,23 @@ abstract class TeamsAutomation(
             return null
         }
         return detail
+    }
+
+    /** The list, once the card has stopped moving after being scrolled into view. */
+    private suspend fun awaitCardOnScreen(id: String): UiNode? {
+        var lastBounds: IntRect? = null
+        return try {
+            awaitScreen("the card to come into view", config.settleMs * 3) { root ->
+                if (!TeamsScreens.isList(root) || TeamsScreens.isDetail(root)) return@awaitScreen null
+                val bounds = TeamsScreens.findCard(root, id)?.bounds ?: return@awaitScreen null
+                val settled = bounds == lastBounds && !bounds.isEmpty
+                lastBounds = bounds
+                root.takeIf { settled }
+            }
+        } catch (_: StepTimeout) {
+            // Still off screen (or never stopped moving): return the list; the press falls back to a click.
+            device.teamsRoot()?.takeIf { TeamsScreens.isList(it) && !TeamsScreens.isDetail(it) }
+        }
     }
 
     /** The detail screen once its content has rendered and stopped changing, or null on timeout. */
@@ -220,9 +278,14 @@ abstract class TeamsAutomation(
         }
     }
 
-    /** Finds a card by GUID, scrolling through the list if Teams ever virtualises it. */
+    /**
+     * Finds a card by GUID. If it isn't in the tree and the list doesn't visibly end on screen,
+     * scrolls down and then up looking for it, in case Teams ever virtualises the list.
+     */
     private suspend fun findCardNode(id: String): UiNode? {
-        device.teamsRoot()?.let { TeamsScreens.findCard(it, id) }?.let { return it }
+        val first = device.teamsRoot() ?: return null
+        TeamsScreens.findCard(first, id)?.let { return it }
+        if (listEndsOnScreen(first, TeamsScreens.cards(first))) return null
         for (direction in listOf(UiAction.ScrollForward, UiAction.ScrollBackward)) {
             var scrolls = 0
             while (scrolls < config.maxScrolls) {
@@ -238,35 +301,60 @@ abstract class TeamsAutomation(
         return device.teamsRoot()?.let { TeamsScreens.findCard(it, id) }
     }
 
-    /** Clicks a tab or an assignment card. Anything else is refused, and ends the run. */
+    /** Taps [node] inside [area], or uses its click action when [how] says so or nowhere is safe to tap. */
+    private suspend fun press(root: UiNode, node: UiNode, area: IntRect, how: Press) {
+        requirePressable(node)
+        val point = if (how == Press.Tap) safeTapPoint(root, node, area) else null
+        if (point != null) {
+            log("Tap ${node.describe()}")
+            device.tap(point.first, point.second)
+        } else {
+            click(node)
+        }
+    }
+
+    /** Uses a tab's or card's click action. Anything else is refused, and ends the run. */
     protected fun click(node: UiNode) {
+        requirePressable(node)
+        log("Click ${node.describe()}")
+        if (!node.perform(UiAction.Click)) log("Teams reported the click on ${node.describe()} failed")
+    }
+
+    /** Only tabs and assignment cards may be pressed, never buttons or dangerous controls. */
+    private fun requirePressable(node: UiNode) {
         val isTab = Tab.entries.any { it.viewId == node.viewId }
         val isCard = TeamsSelectors.CARD_ID.matches(node.viewId)
         val safe = (isTab || isCard) &&
             !node.className.endsWith("Button") &&
             !(isTab && TeamsSelectors.FORBIDDEN_CONTROL.containsMatchIn(node.label))
         if (!safe) {
-            log("Refused to click ${node.describe()}")
+            log("Refused to press ${node.describe()}")
             throw SyncAbort("Blocked an unexpected click")
         }
-        log("Click ${node.describe()}")
-        if (!node.perform(UiAction.Click)) log("Teams reported the click on ${node.describe()} failed")
+    }
+
+    /** A card's title, below the tab bar: the part of a card it is safe to tap. */
+    private fun cardTapArea(root: UiNode, card: UiNode): IntRect {
+        val title = card.walk().firstOrNull { it.viewId.startsWith(TeamsSelectors.CARD_TITLE_ID_PREFIX) } ?: card
+        val tabBarBottom = Tab.entries.mapNotNull { TeamsScreens.tabNode(root, it)?.bounds?.bottom }.maxOrNull() ?: 0
+        return title.bounds.intersect(card.bounds).let { it.copy(top = maxOf(it.top, tabBarBottom + 1)) }
     }
 
     /**
-     * A point inside the card's title, below the tab bar, that no button or dangerous control
+     * A point inside a card's title, below the tab bar, that no button or dangerous control
      * covers (the list has a floating "About Assignments" button, for one).
      */
-    internal fun safeTapPoint(root: UiNode, card: UiNode): Pair<Int, Int>? {
-        val title = card.walk().firstOrNull { it.viewId.startsWith(TeamsSelectors.CARD_TITLE_ID_PREFIX) } ?: card
-        val tabBarBottom = Tab.entries.mapNotNull { TeamsScreens.tabNode(root, it)?.bounds?.bottom }.maxOrNull() ?: 0
-        val area = title.bounds.intersect(card.bounds).let { it.copy(top = maxOf(it.top, tabBarBottom + 1)) }
+    internal fun safeTapPoint(root: UiNode, card: UiNode): Pair<Int, Int>? =
+        safeTapPoint(root, card, cardTapArea(root, card))
+
+    /** The centre of [area] inside [target], unless a button or dangerous control outside [target] covers it. */
+    internal fun safeTapPoint(root: UiNode, target: UiNode, area: IntRect): Pair<Int, Int>? {
         if (area.isEmpty) return null
         val x = area.centerX
         val y = area.centerY
-        val inCard = card.walk().toSet()
+        val inTarget = target.walk().toSet()
         val blocked = root.walk().any { node ->
-            node !in inCard && node.bounds.contains(x, y) &&
+            node !in inTarget && node.bounds.contains(x, y) &&
                 (node.className.endsWith("Button") || TeamsSelectors.FORBIDDEN_CONTROL.containsMatchIn(node.label))
         }
         return if (blocked) null else x to y
@@ -280,4 +368,12 @@ abstract class TeamsAutomation(
     }
 
     private fun String.normalizedTitle() = lowercase().replace(Regex("\\s+"), " ").trim()
+
+    private companion object {
+        val TAB_PRESSES = listOf(Press.Tap, Press.Click, Press.Tap)
+        val CARD_PRESSES = listOf(Press.Tap, Press.Click)
+
+        /** How far above the bottom of the scrolling area the last card must end to count as the end. */
+        const val LIST_END_MARGIN_PX = 24
+    }
 }

@@ -19,8 +19,8 @@ class NavigateStateMachineTest {
     private fun TestScope.navigate(device: FakeTeamsDevice) =
         NavigateStateMachine(device, now = { testScheduler.currentTime })
 
-    private fun assignment(key: String, title: String, tab: AssignmentTab) =
-        Assignment(key = key, title = title, className = "", tab = tab)
+    private fun assignment(key: String, title: String, tab: AssignmentTab, className: String = "") =
+        Assignment(key = key, title = title, className = className, tab = tab)
 
     @Test
     fun `opens a Forthcoming assignment`() = runTest {
@@ -29,7 +29,7 @@ class NavigateStateMachineTest {
 
         assertTrue(navigate(device).run(target))
         assertEquals(Screen.Detail(target.key, Tab.Forthcoming), device.screen)
-        assertFalse(Tab.PastDue.viewId in device.clicked)
+        assertFalse(Tab.PastDue.viewId in device.pressed)
     }
 
     @Test
@@ -58,6 +58,39 @@ class NavigateStateMachineTest {
 
         assertFalse(navigate(device).run(target))
         assertIs<Screen.List>(device.screen)
-        assertEquals(0, device.cardClicks)
+        assertTrue(device.opened.isEmpty())
+    }
+
+    @Test
+    fun `never opens a same-titled card in place of a missing GUID`() = runTest {
+        // Codex review: a weekly "Prep 1" in the same class must not stand in for one handed in.
+        val device = FakeTeamsDevice()
+        val handedIn = assignment(
+            "11111111-2222-3333-4444-555555555555", "Prep 1", AssignmentTab.Forthcoming,
+            className = "Physics Skills & Stretch 12.2-PH3",
+        )
+
+        assertFalse(navigate(device).run(handedIn))
+        assertTrue(device.opened.isEmpty())
+    }
+
+    @Test
+    fun `matches by title only for cards saved without a GUID`() = runTest {
+        val device = FakeTeamsDevice()
+        val className = "Physics Skills & Stretch 12.2-PH3"
+        val noGuid = assignment(Assignment.fallbackKey(className, "Prep 1"), "Prep 1", AssignmentTab.Forthcoming, className)
+
+        assertTrue(navigate(device).run(noGuid))
+        assertEquals(listOf("b0ccf04e-a976-4a0a-8066-6fca1e0ef999"), device.opened)
+    }
+
+    @Test
+    fun `scrolls for a card missing from a list that runs off screen`() = runTest {
+        // Codex review: a virtualised list only holds the rows in view, so look further before giving up.
+        val device = FakeTeamsDevice()
+        val target = assignment("00000000-0000-0000-0000-000000000000", "Further down", AssignmentTab.Forthcoming)
+
+        assertFalse(navigate(device).run(target))
+        assertTrue(UiAction.ScrollForward in device.scrolls)
     }
 }

@@ -5,8 +5,8 @@ import kotlinx.coroutines.delay
 
 /**
  * A scripted phone that serves the Phase 0 fixtures: each tab shows its captured list, a card
- * opens its captured detail screen, and Back returns to the list. Hooks simulate the ways a real
- * run goes wrong.
+ * opens its captured detail screen, and Back returns to the list. Taps and click actions both
+ * work by default; hooks simulate the ways a real run goes wrong.
  */
 class FakeTeamsDevice(
     private val lists: Map<Tab, String> = mapOf(
@@ -24,22 +24,38 @@ class FakeTeamsDevice(
     }
 
     var screen: Screen = Screen.Home
-    val clicked = mutableListOf<String>()
-    val tapped = mutableListOf<Pair<Int, Int>>()
     var backPresses = 0
     var teamsInstalled = true
+
+    /** View ids that got a click action. */
+    val clicked = mutableListOf<String>()
+
+    /** Tap points, and the view id of the tab or card under each ("" for neither). */
+    val tapped = mutableListOf<Pair<Int, Int>>()
+    val tappedTargets = mutableListOf<String>()
+
+    /** Cards whose detail screen was opened, by either means, in order. */
+    val opened = mutableListOf<String>()
+
+    /** Scroll actions requested (none ever moves: the captures already hold every card). */
+    val scrolls = mutableListOf<UiAction>()
 
     /** Where the deep link lands; the Forthcoming list by default. */
     var launchLandsOn: Screen = Screen.List(Tab.Forthcoming)
 
-    /** Card ids whose clicks are swallowed this many more times, like a WebView ignoring them. */
+    /** Card ids whose click actions are swallowed this many more times, like a WebView ignoring them. */
     val swallowClicks = mutableMapOf<String, Int>()
     var tapsOpenCards = true
+
+    /** How many more tab click actions / tab taps to ignore. */
+    var swallowTabClicks = 0
+    var ignoreTabTaps = 0
 
     /** Runs after every action, to script events such as the user leaving Teams. */
     var afterAction: (FakeTeamsDevice) -> Unit = {}
 
-    val cardClicks: Int get() = clicked.count { TeamsSelectors.CARD_ID.matches(it) }
+    /** Every tab or card the automation pressed, by click action or tap. */
+    val pressed: List<String> get() = clicked + tappedTargets
 
     private val trees = mutableMapOf<String, FakeNode>()
     private fun tree(name: String) = trees.getOrPut(name) { Fixtures.load(name, ::onAction) }
@@ -85,10 +101,17 @@ class FakeTeamsDevice(
     override suspend fun tap(x: Int, y: Int): Boolean {
         tapped += x to y
         val list = screen as? Screen.List
-        if (list != null && tapsOpenCards) {
-            val card = tree(lists.getValue(list.tab)).walk()
-                .firstOrNull { TeamsSelectors.CARD_ID.matches(it.viewId) && it.bounds.contains(x, y) }
-            if (card != null && detailFixture(card.viewId) != null) screen = Screen.Detail(card.viewId, list.tab)
+        if (list == null) {
+            tappedTargets += ""
+        } else {
+            val root = tree(lists.getValue(list.tab))
+            val tab = Tab.entries.firstOrNull { root.findById(it.viewId)?.bounds?.contains(x, y) == true }
+            val card = root.walk().firstOrNull { TeamsSelectors.CARD_ID.matches(it.viewId) && it.bounds.contains(x, y) }
+            tappedTargets += tab?.viewId ?: card?.viewId ?: ""
+            when {
+                tab != null -> if (ignoreTabTaps > 0) ignoreTabTaps-- else screen = Screen.List(tab)
+                card != null && tapsOpenCards -> open(card.viewId, list.tab)
+            }
         }
         afterAction(this)
         return true
@@ -99,7 +122,10 @@ class FakeTeamsDevice(
             UiAction.Click -> click(node)
             UiAction.ShowOnScreen -> true
             // The captured lists hold every card, so there is never anything more to scroll to.
-            UiAction.ScrollForward, UiAction.ScrollBackward -> false
+            UiAction.ScrollForward, UiAction.ScrollBackward -> {
+                scrolls += action
+                false
+            }
         }
         afterAction(this)
         return handled
@@ -108,7 +134,7 @@ class FakeTeamsDevice(
     private fun click(node: FakeNode): Boolean {
         clicked += node.viewId
         Tab.entries.firstOrNull { it.viewId == node.viewId }?.let {
-            screen = Screen.List(it)
+            if (swallowTabClicks > 0) swallowTabClicks-- else screen = Screen.List(it)
             return true
         }
         val list = screen as? Screen.List ?: return false
@@ -118,7 +144,13 @@ class FakeTeamsDevice(
             swallowClicks[node.viewId] = swallow - 1
             return true
         }
-        if (detailFixture(node.viewId) != null) screen = Screen.Detail(node.viewId, list.tab)
+        open(node.viewId, list.tab)
         return true
+    }
+
+    private fun open(id: String, from: Tab) {
+        if (detailFixture(id) == null) return
+        opened += id
+        screen = Screen.Detail(id, from)
     }
 }
