@@ -18,11 +18,12 @@ class AssignmentsWidgetReceiver : GlanceAppWidgetReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != WidgetUpdater.ACTION_REDRAW) {
+        if (intent.action !in REDRAW_ACTIONS) {
             super.onReceive(context, intent)
             return
         }
-        // The midnight / deadline redraw: no sync, just draw the stored list again.
+        // No sync, just draw the stored list again: at midnight or a deadline, or because the
+        // time zone or clock changed, which moves both the day boundaries and the next alarm.
         val pending = goAsync()
         CoroutineScope(Dispatchers.Default).launch {
             try {
@@ -31,5 +32,13 @@ class AssignmentsWidgetReceiver : GlanceAppWidgetReceiver() {
                 pending.finish()
             }
         }
+    }
+
+    private companion object {
+        val REDRAW_ACTIONS = setOf(
+            WidgetUpdater.ACTION_REDRAW,
+            Intent.ACTION_TIMEZONE_CHANGED,
+            Intent.ACTION_TIME_CHANGED,
+        )
     }
 }
