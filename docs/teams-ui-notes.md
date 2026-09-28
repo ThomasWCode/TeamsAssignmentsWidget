@@ -159,6 +159,8 @@ Findings from running the service itself, after Phase 0:
 
 - **Teams ignores accessibility click actions.** `performAction(ACTION_CLICK)` on a tab or card returns `true` and does nothing, every time. An injected gesture tap (`dispatchGesture`) at the node's centre works every time. The workflows therefore tap first, with the click action only as a fallback, and verify every press (tab selected? detail screen open?).
 - `ACTION_SHOW_ON_SCREEN` does scroll an off-screen card into view, so it can then be tapped.
+- **Screens slide in, and the tree reports them mid-slide.** Just after Back from an assignment, a failure dump caught the whole list window at `[-337,0][743,2340]` instead of `[0,0][1080,2340]`. A tap taken from that snapshot pointed at x = -126, which `GestureDescription` rejects outright. Taps therefore wait for their target to be at rest: the same bounds twice in a row, in a window that isn't offset (`TeamsScreens.windowAtRest`). Captured as `list_past_due_mid_transition`.
+- **"Due earlier today"** is Past due's label for work that passed its time earlier the same day (an 08:00 homework, seen at 08:56). Captured as `list_past_due_earlier_today`.
 - A full read of all 10 assignments matched Teams exactly: titles, classes, due times and instructions.
 
 Not yet seen, and worth capturing with **Dump Teams screen** when they turn up:
