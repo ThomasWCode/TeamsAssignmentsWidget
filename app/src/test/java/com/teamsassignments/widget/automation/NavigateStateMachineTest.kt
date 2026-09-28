@@ -85,6 +85,38 @@ class NavigateStateMachineTest {
     }
 
     @Test
+    fun `taps a card again when the first tap is missed`() = runTest {
+        // Codex review: Teams ignores click actions, so one missed tap mustn't lose the assignment.
+        val id = "4c958b24-de6c-429b-846b-1d02d0cbed0b"
+        val device = FakeTeamsDevice().apply {
+            ignoreCardTaps[id] = 1
+            swallowClicks[id] = 1
+        }
+        assertTrue(navigate(device).run(assignment(id, "Particle Physics Test", AssignmentTab.Forthcoming)))
+        assertEquals(Screen.Detail(id, Tab.Forthcoming), device.screen)
+    }
+
+    @Test
+    fun `goes back to the list when a detail screen can't be read`() = runTest {
+        // Codex review: an unreadable detail screen was left open, stranding the next step.
+        val id = "4c958b24-de6c-429b-846b-1d02d0cbed0b"
+        val device = FakeTeamsDevice().apply { detailOverrides[id] = "detail_unreadable" }
+
+        assertFalse(navigate(device).run(assignment(id, "Particle Physics Test", AssignmentTab.Forthcoming)))
+        assertIs<Screen.List>(device.screen)
+    }
+
+    @Test
+    fun `looks upwards for a card when the list ends on screen`() = runTest {
+        // Codex review: a list scrolled to its end can still have rows above.
+        val device = FakeTeamsDevice()
+        val target = assignment("00000000-0000-0000-0000-000000000000", "Gone", AssignmentTab.PastDue)
+
+        assertFalse(navigate(device).run(target))
+        assertTrue(UiAction.ScrollBackward in device.scrolls)
+    }
+
+    @Test
     fun `scrolls for a card missing from a list that runs off screen`() = runTest {
         // Codex review: a virtualised list only holds the rows in view, so look further before giving up.
         val device = FakeTeamsDevice()

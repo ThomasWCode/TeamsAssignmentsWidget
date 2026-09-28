@@ -14,6 +14,8 @@ class FakeTeamsDevice(
         Tab.PastDue to "list_past_due",
         Tab.Completed to "list_completed",
     ),
+    /** Virtual time, for tabs that take a while to load (see [slowTabs]). */
+    private val now: () -> Long = { 0L },
 ) : TeamsDevice {
 
     sealed interface Screen {
@@ -51,6 +53,17 @@ class FakeTeamsDevice(
     var swallowTabClicks = 0
     var ignoreTabTaps = 0
 
+    /** Card ids whose taps are ignored this many more times. */
+    val ignoreCardTaps = mutableMapOf<String, Int>()
+
+    /** A tab that loads slowly: for this long after switching to it, show this fixture instead. */
+    val slowTabs = mutableMapOf<Tab, Pair<String, Long>>()
+
+    /** Detail screens to show instead of the captured ones, by card id. */
+    val detailOverrides = mutableMapOf<String, String>()
+
+    private var tabShownAt = 0L
+
     /** Runs after every action, to script events such as the user leaving Teams. */
     var afterAction: (FakeTeamsDevice) -> Unit = {}
 
@@ -62,6 +75,17 @@ class FakeTeamsDevice(
 
     private fun detailFixture(id: String) = "detail_${id.take(8)}".takeIf(Fixtures::exists)
 
+    /** What a list tab shows right now, allowing for [slowTabs]. */
+    private fun listFixture(tab: Tab): String {
+        val (loading, forMs) = slowTabs[tab] ?: return lists.getValue(tab)
+        return if (now() - tabShownAt < forMs) loading else lists.getValue(tab)
+    }
+
+    private fun showTab(tab: Tab) {
+        screen = Screen.List(tab)
+        tabShownAt = now()
+    }
+
     override fun launchAssignments(): Boolean {
         if (!teamsInstalled) return false
         screen = launchLandsOn
@@ -69,8 +93,8 @@ class FakeTeamsDevice(
     }
 
     override fun teamsRoot(): UiNode? = when (val s = screen) {
-        is Screen.List -> tree(lists.getValue(s.tab))
-        is Screen.Detail -> tree(detailFixture(s.id) ?: error("No detail fixture for ${s.id}"))
+        is Screen.List -> tree(listFixture(s.tab))
+        is Screen.Detail -> tree(detailOverrides[s.id] ?: detailFixture(s.id) ?: error("No detail fixture for ${s.id}"))
         else -> null
     }
 
@@ -104,12 +128,14 @@ class FakeTeamsDevice(
         if (list == null) {
             tappedTargets += ""
         } else {
-            val root = tree(lists.getValue(list.tab))
+            val root = tree(listFixture(list.tab))
             val tab = Tab.entries.firstOrNull { root.findById(it.viewId)?.bounds?.contains(x, y) == true }
             val card = root.walk().firstOrNull { TeamsSelectors.CARD_ID.matches(it.viewId) && it.bounds.contains(x, y) }
             tappedTargets += tab?.viewId ?: card?.viewId ?: ""
+            val ignoredTaps = card?.let { ignoreCardTaps[it.viewId] } ?: 0
             when {
-                tab != null -> if (ignoreTabTaps > 0) ignoreTabTaps-- else screen = Screen.List(tab)
+                tab != null -> if (ignoreTabTaps > 0) ignoreTabTaps-- else showTab(tab)
+                card != null && ignoredTaps > 0 -> ignoreCardTaps[card.viewId] = ignoredTaps - 1
                 card != null && tapsOpenCards -> open(card.viewId, list.tab)
             }
         }
@@ -134,7 +160,7 @@ class FakeTeamsDevice(
     private fun click(node: FakeNode): Boolean {
         clicked += node.viewId
         Tab.entries.firstOrNull { it.viewId == node.viewId }?.let {
-            if (swallowTabClicks > 0) swallowTabClicks-- else screen = Screen.List(it)
+            if (swallowTabClicks > 0) swallowTabClicks-- else showTab(it)
             return true
         }
         val list = screen as? Screen.List ?: return false
@@ -149,7 +175,7 @@ class FakeTeamsDevice(
     }
 
     private fun open(id: String, from: Tab) {
-        if (detailFixture(id) == null) return
+        if (detailOverrides[id] == null && detailFixture(id) == null) return
         opened += id
         screen = Screen.Detail(id, from)
     }

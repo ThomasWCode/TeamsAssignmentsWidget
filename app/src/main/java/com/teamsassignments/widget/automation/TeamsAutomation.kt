@@ -27,8 +27,10 @@ data class AutomationConfig(
     val tabSwitchTimeoutMs: Long = 2_500,
     /** How long a list or detail screen must stay unchanged to count as loaded. */
     val settleMs: Long = 600,
-    /** An empty list, or one identical to the previous tab's, must stay put longer. */
-    val slowSettleMs: Long = 2_000,
+    /** How long an empty list must stay empty, with nothing loading, before it is believed. */
+    val emptySettleMs: Long = 2_000,
+    /** The same, for a tab that had assignments at the last sync, where "empty" is more suspect. */
+    val suspectEmptySettleMs: Long = 6_000,
     /** How long the user can be away from Teams before the run is abandoned. */
     val foregroundGraceMs: Long = 2_000,
     val globalTimeoutMs: Long = 180_000,
@@ -124,20 +126,24 @@ abstract class TeamsAutomation(
     /**
      * Selects [tab] if needed and returns its cards once the list has finished loading.
      * Each press is checked before the next: tap, then the click action, then tap again.
+     * [emptySettleMs] is how long an empty list must hold before it is believed.
      */
-    protected suspend fun selectTab(tab: Tab, previousTabIds: Set<String> = emptySet()): List<ListCard> {
+    protected suspend fun selectTab(
+        tab: Tab,
+        previousTabIds: Set<String> = emptySet(),
+        emptySettleMs: Long = config.emptySettleMs,
+    ): List<ListCard> {
         for ((i, how) in TAB_PRESSES.withIndex()) {
             val root = awaitScreen("the ${tab.label} tab") { it.takeIf { r -> TeamsScreens.tabNode(r, tab) != null } }
             if (TeamsScreens.selectedTab(root) == tab) break
             val node = TeamsScreens.tabNode(root, tab) ?: continue
-            press(root, node, node.bounds, how)
-            if (awaitTabSelected(tab)) {
+            if (press(root, node, node.bounds, how) && awaitTabSelected(tab)) {
                 if (i > 0) log("${tab.label} tab selected on attempt ${i + 1}")
                 break
             }
             log("${tab.label} tab didn't switch (attempt ${i + 1} of ${TAB_PRESSES.size})")
         }
-        return awaitSettledList(tab, previousTabIds)
+        return awaitSettledList(tab, previousTabIds, emptySettleMs)
     }
 
     private suspend fun awaitTabSelected(tab: Tab): Boolean = try {
@@ -149,13 +155,22 @@ abstract class TeamsAutomation(
     }
 
     /**
-     * Waits for [tab]'s list to stop changing. A list that is empty, or still identical to the
-     * previous tab's, has to hold for longer, in case the new tab is still loading.
+     * Waits for [tab]'s list to finish loading, which matters because a sync saves whatever this
+     * returns. Teams can mark a tab selected before its rows are replaced, so:
+     * - the previous tab's rows, still showing, are never taken as this tab's (an assignment is
+     *   on one tab only), however long they stay;
+     * - nothing counts while a loading indicator shows;
+     * - an empty list must hold for [emptySettleMs] before it is believed.
+     * If it never settles, the step times out and the caller keeps the data it had.
      */
-    protected suspend fun awaitSettledList(tab: Tab, previousTabIds: Set<String> = emptySet()): List<ListCard> {
+    protected suspend fun awaitSettledList(
+        tab: Tab,
+        previousTabIds: Set<String> = emptySet(),
+        emptySettleMs: Long = config.emptySettleMs,
+    ): List<ListCard> {
         var lastIds: List<String>? = null
         var stableSince = 0L
-        return awaitScreen("the ${tab.label} list") { root ->
+        return awaitScreen("the ${tab.label} list", config.stepTimeoutMs + emptySettleMs) { root ->
             if (TeamsScreens.selectedTab(root) != tab) {
                 lastIds = null
                 return@awaitScreen null
@@ -163,12 +178,13 @@ abstract class TeamsAutomation(
             val cards = TeamsScreens.cards(root)
             val ids = cards.map { it.id }
             val t = now()
-            if (ids != lastIds) {
+            if (ids != lastIds || TeamsScreens.isLoading(root)) {
                 lastIds = ids
                 stableSince = t
                 return@awaitScreen null
             }
-            val needed = if (ids.isEmpty() || ids.toSet() == previousTabIds) config.slowSettleMs else config.settleMs
+            if (ids.isNotEmpty() && ids.toSet() == previousTabIds) return@awaitScreen null // the old tab's rows
+            val needed = if (ids.isEmpty()) emptySettleMs else config.settleMs
             cards.takeIf { t - stableSince >= needed }
         }
     }
@@ -201,7 +217,10 @@ abstract class TeamsAutomation(
             // its own buttons where the card was.
             val root = awaitCardOnScreen(id) ?: break
             val target = TeamsScreens.findCard(root, id) ?: break
-            press(root, target, cardTapArea(root, target), how)
+            if (!press(root, target, cardTapArea(root, target), how)) {
+                log("${target.describe()}: the ${how.name.lowercase()} didn't go through")
+                continue
+            }
             detail = awaitDetail()
             if (detail != null) break
             if (device.teamsRoot()?.let(TeamsScreens::isDetail) == true) {
@@ -211,6 +230,12 @@ abstract class TeamsAutomation(
             log("${target.describe()} didn't open (${how.name.lowercase()})")
         }
 
+        if (detail == null && device.teamsRoot()?.let(TeamsScreens::isDetail) == true) {
+            // A detail screen opened but never became readable: leave it, so the caller is on the list.
+            log("The detail screen couldn't be read; going back")
+            backToList()
+            return null
+        }
         if (detail != null && expectedTitle != null && !sameTitle(detail.title, expectedTitle)) {
             log("Opened \"${detail.title}\" instead of \"$expectedTitle\"")
             backToList()
@@ -285,8 +310,13 @@ abstract class TeamsAutomation(
     private suspend fun findCardNode(id: String): UiNode? {
         val first = device.teamsRoot() ?: return null
         TeamsScreens.findCard(first, id)?.let { return it }
-        if (listEndsOnScreen(first, TeamsScreens.cards(first))) return null
-        for (direction in listOf(UiAction.ScrollForward, UiAction.ScrollBackward)) {
+        // A list that ends on screen has nothing more below, but may still have rows above.
+        val directions = if (listEndsOnScreen(first, TeamsScreens.cards(first))) {
+            listOf(UiAction.ScrollBackward)
+        } else {
+            listOf(UiAction.ScrollForward, UiAction.ScrollBackward)
+        }
+        for (direction in directions) {
             var scrolls = 0
             while (scrolls < config.maxScrolls) {
                 checkAbort()
@@ -301,23 +331,23 @@ abstract class TeamsAutomation(
         return device.teamsRoot()?.let { TeamsScreens.findCard(it, id) }
     }
 
-    /** Taps [node] inside [area], or uses its click action when [how] says so or nowhere is safe to tap. */
-    private suspend fun press(root: UiNode, node: UiNode, area: IntRect, how: Press) {
+    /**
+     * Taps [node] inside [area], or uses its click action when [how] says so or nowhere is safe to
+     * tap. Returns false when the press didn't go through, so the caller needn't wait for it.
+     */
+    private suspend fun press(root: UiNode, node: UiNode, area: IntRect, how: Press): Boolean {
         requirePressable(node)
         val point = if (how == Press.Tap) safeTapPoint(root, node, area) else null
-        if (point != null) {
-            log("Tap ${node.describe()}")
-            device.tap(point.first, point.second)
-        } else {
-            click(node)
-        }
+        if (point == null) return click(node)
+        log("Tap ${node.describe()}")
+        return device.tap(point.first, point.second)
     }
 
     /** Uses a tab's or card's click action. Anything else is refused, and ends the run. */
-    protected fun click(node: UiNode) {
+    protected fun click(node: UiNode): Boolean {
         requirePressable(node)
         log("Click ${node.describe()}")
-        if (!node.perform(UiAction.Click)) log("Teams reported the click on ${node.describe()} failed")
+        return node.perform(UiAction.Click).also { if (!it) log("Teams reported the click on ${node.describe()} failed") }
     }
 
     /** Only tabs and assignment cards may be pressed, never buttons or dangerous controls. */
@@ -370,8 +400,10 @@ abstract class TeamsAutomation(
     private fun String.normalizedTitle() = lowercase().replace(Regex("\\s+"), " ").trim()
 
     private companion object {
+        // Taps are what work on the phone, so a missed tap gets a second one; the click action in
+        // between costs little and covers a target that has scrolled out of reach.
         val TAB_PRESSES = listOf(Press.Tap, Press.Click, Press.Tap)
-        val CARD_PRESSES = listOf(Press.Tap, Press.Click)
+        val CARD_PRESSES = listOf(Press.Tap, Press.Click, Press.Tap)
 
         /** How far above the bottom of the scrolling area the last card must end to count as the end. */
         const val LIST_END_MARGIN_PX = 24

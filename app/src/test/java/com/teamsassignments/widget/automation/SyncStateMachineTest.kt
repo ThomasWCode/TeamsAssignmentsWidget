@@ -250,6 +250,52 @@ class SyncStateMachineTest {
     }
 
     @Test
+    fun `never takes the previous tab's rows for a slow tab`() = runTest {
+        // Codex review: Teams can mark a tab selected before replacing its rows.
+        val device = FakeTeamsDevice(now = { testScheduler.currentTime }).apply {
+            slowTabs[Tab.PastDue] = "list_past_due_stale_rows" to 4_000L
+        }
+        val result = machine(device).run(emptyList())
+        assertEquals(10, result.size)
+        assertEquals(3, result.count { it.tab == AssignmentTab.PastDue })
+        assertEquals(AssignmentTab.Forthcoming, result.single { it.key == hausaufgabe }.tab)
+    }
+
+    @Test
+    fun `waits while the list shows a spinner`() = runTest {
+        val device = FakeTeamsDevice(now = { testScheduler.currentTime }).apply {
+            slowTabs[Tab.PastDue] = "list_past_due_loading" to 5_000L
+        }
+        assertEquals(10, machine(device).run(emptyList()).size)
+    }
+
+    @Test
+    fun `an empty tab is believed once it stays empty`() = runTest {
+        val device = FakeTeamsDevice(
+            lists = mapOf(
+                Tab.Forthcoming to "list_forthcoming",
+                Tab.PastDue to "list_past_due_empty",
+                Tab.Completed to "list_completed",
+            ),
+        )
+        val result = machine(device).run(emptyList())
+        assertEquals(7, result.size)
+        assertTrue(result.all { it.tab == AssignmentTab.Forthcoming })
+    }
+
+    @Test
+    fun `a tab that had work at the last sync must stay empty for longer`() = runTest {
+        val previous = machine(FakeTeamsDevice()).run(emptyList())
+        fun emptyForFourSeconds() = FakeTeamsDevice(now = { testScheduler.currentTime }).apply {
+            slowTabs[Tab.PastDue] = "list_past_due_empty" to 4_000L
+        }
+        // Past due had work last time, so four seconds of "empty" isn't believed: the real list is read.
+        assertEquals(3, machine(emptyForFourSeconds()).run(previous).count { it.tab == AssignmentTab.PastDue })
+        // With nothing there before, the same empty spell is believed.
+        assertEquals(0, machine(emptyForFourSeconds()).run(emptyList()).count { it.tab == AssignmentTab.PastDue })
+    }
+
+    @Test
     fun `tries the tab again when Teams ignores the first tap`() = runTest {
         val device = FakeTeamsDevice().apply { ignoreTabTaps = 1 }
         val result = machine(device).run(emptyList())

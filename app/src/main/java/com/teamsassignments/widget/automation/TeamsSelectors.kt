@@ -60,6 +60,12 @@ object TeamsSelectors {
     /** Group header date, `28 Sept` / `1 Oct` (en-GB) or `Sep 28` (en-US). */
     val GROUP_DATE = Regex("""^(\d{1,2} [A-Za-z]{3,9}\.?|[A-Za-z]{3,9}\.? \d{1,2})(,? \d{4})?$""")
 
+    /**
+     * A bare loading label. Exact on purpose: a card titled "Loading and unloading forces"
+     * must not look like a list that never finishes loading.
+     */
+    val LOADING_LABEL = Regex("""^Loading(\.\.\.|…)?$""", RegexOption.IGNORE_CASE)
+
     /** Group header label next to the date. */
     val GROUP_LABEL = Regex(
         """^(Today|Tomorrow|Yesterday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|(Due )?\d{1,3} days? ago)$""",

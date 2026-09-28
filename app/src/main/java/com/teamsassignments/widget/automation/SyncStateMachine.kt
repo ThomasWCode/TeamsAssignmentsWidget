@@ -36,7 +36,7 @@ class SyncStateMachine(
         log(if (full) "Full sync started" else "Sync started")
         openAssignments()
 
-        val listed = collectLists()
+        val listed = collectLists(previous)
         val previousByKey = previous.associateBy { it.key }
         // Start with the tab that is already open, to save a switch.
         val openTab = device.teamsRoot()?.let(TeamsScreens::selectedTab)
@@ -66,12 +66,15 @@ class SyncStateMachine(
      * Reads both open tabs. A card listed on both (its deadline passed between the two reads)
      * counts once, under the later tab, Past due, which is where it now lives.
      */
-    private suspend fun collectLists(): List<Listed> {
+    private suspend fun collectLists(previous: List<Assignment>): List<Listed> {
         val found = LinkedHashMap<String, Listed>()
         var previousTabIds = emptySet<String>()
         for (tab in TeamsSelectors.OPEN_TABS) {
             val cards = try {
-                selectTab(tab, previousTabIds).let { collectMore(tab, it) }
+                // A tab that had work at the last sync and now looks empty may just be slow to load.
+                val hadWork = previous.any { it.tab == tab.toAssignmentTab() }
+                val emptySettle = if (hadWork) config.suspectEmptySettleMs else config.emptySettleMs
+                selectTab(tab, previousTabIds, emptySettle).let { collectMore(tab, it) }
             } catch (_: StepTimeout) {
                 throw SyncAbort("Couldn't read the ${tab.label} list")
             }
