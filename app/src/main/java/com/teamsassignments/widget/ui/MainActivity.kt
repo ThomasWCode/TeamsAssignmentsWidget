@@ -177,7 +177,13 @@ private fun SetupCard(checks: SetupChecks, connected: Boolean) {
             title = "Microsoft Teams installed",
             body = "The widget reads your assignments from the Teams app.",
         ) {
-            OutlinedButton(onClick = { context.startActivity(TeamsLauncher.playStoreIntent()) }) { Text("Get Teams") }
+            OutlinedButton(
+                onClick = {
+                    if (!TeamsLauncher.openStorePage(context)) {
+                        Toast.makeText(context, "Install Microsoft Teams from your app store", Toast.LENGTH_LONG).show()
+                    }
+                },
+            ) { Text("Get Teams") }
         }
         Step(
             done = checks.serviceEnabled && connected,

@@ -30,10 +30,14 @@ class AndroidUiNode private constructor(
 
     override fun toString(): String = describe()
 
+    /** A copied tree, and whether all of it fitted within the node budget. */
+    class Snapshot(val root: AndroidUiNode, val complete: Boolean)
+
     companion object {
-        /** Copies the tree under [root], stopping after [maxNodes] nodes. */
-        fun snapshot(root: AccessibilityNodeInfo, maxNodes: Int = 4_000): AndroidUiNode {
+        /** Copies the tree under [root], stopping (and saying so) after [maxNodes] nodes. */
+        fun snapshot(root: AccessibilityNodeInfo, maxNodes: Int = 10_000): Snapshot {
             var budget = maxNodes
+            var complete = true
             val rect = Rect()
 
             fun copy(info: AccessibilityNodeInfo): AndroidUiNode {
@@ -42,7 +46,10 @@ class AndroidUiNode private constructor(
                 val bounds = IntRect(rect.left, rect.top, rect.right, rect.bottom)
                 val children = ArrayList<AndroidUiNode>(info.childCount)
                 for (i in 0 until info.childCount) {
-                    if (budget <= 0) break
+                    if (budget <= 0) {
+                        complete = false
+                        break
+                    }
                     info.getChild(i)?.let { children += copy(it) }
                 }
                 return AndroidUiNode(
@@ -59,7 +66,8 @@ class AndroidUiNode private constructor(
                 )
             }
 
-            return copy(root)
+            val copied = copy(root)
+            return Snapshot(copied, complete)
         }
     }
 }

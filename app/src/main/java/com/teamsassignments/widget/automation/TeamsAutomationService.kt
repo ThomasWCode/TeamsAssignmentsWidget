@@ -129,6 +129,13 @@ class TeamsAutomationService : AccessibilityService() {
             } catch (e: SyncAbort) {
                 log.add("Opening stopped: ${e.reason}")
                 if (e.byUser) null else false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A row tap must never take the app down (and the sync service with it).
+                Log.e(SyncLog.TAG, "Opening an assignment crashed", e)
+                log.add("Opening crashed: $e")
+                false
             } finally {
                 withContext(NonCancellable) {
                     banner.hide()
@@ -185,6 +192,7 @@ class TeamsAutomationService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(SyncLog.TAG, "Sync crashed", e)
             log.add("Sync crashed: $e")
+            dumper.saveFailureDump() // the failures most in need of a capture
             store.markFailed("Unexpected error")
         } finally {
             withContext(NonCancellable) {

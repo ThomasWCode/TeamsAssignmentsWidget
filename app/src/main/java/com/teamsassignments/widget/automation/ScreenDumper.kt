@@ -9,10 +9,12 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.teamsassignments.widget.data.SyncLog
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.Writer
 import java.time.LocalDateTime
@@ -60,18 +62,22 @@ class ScreenDumper(
     private fun capture() {
         val root = device.teamsWindowRoot() ?: return
         disarm()
-        val file = runCatching { save(root, "teams") }.getOrElse {
-            Toast.makeText(service, "Couldn't save the dump", Toast.LENGTH_LONG).show()
-            return
+        scope.launch {
+            // Walking a large tree over IPC and writing it out would stall the main thread.
+            val file = withContext(Dispatchers.IO) { runCatching { save(root, "teams") }.getOrNull() }
+            if (file == null) {
+                Toast.makeText(service, "Couldn't save the dump", Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            log.add("Saved screen dump ${file.name}")
+            share(service, file)
         }
-        log.add("Saved screen dump ${file.name}")
-        share(service, file)
     }
 
     /** Saves whatever Teams shows now; called when a sync fails, to record where it got stuck. */
-    fun saveFailureDump() {
+    suspend fun saveFailureDump() {
         val root = device.teamsWindowRoot() ?: return
-        runCatching { save(root, "failure") }
+        withContext(Dispatchers.IO) { runCatching { save(root, "failure") } }
             .onSuccess { log.add("Saved screen dump ${it.name}") }
     }
 
