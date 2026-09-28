@@ -4,6 +4,8 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Rect
+import android.os.Build
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import kotlinx.coroutines.channels.Channel
@@ -77,17 +79,24 @@ class AndroidTeamsDevice(private val service: AccessibilityService) : TeamsDevic
     override fun home(): Boolean = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
 
     /**
-     * Taps a point, unless another window (the notification shade, a heads-up notification, the
-     * keyboard, another service's floating button) covers it: an injected tap goes to whatever
-     * is on top, never through it.
+     * Taps a point, unless it is off the screen or another window (the notification shade, a
+     * heads-up notification, the keyboard, another service's floating button) covers it: an
+     * injected tap goes to whatever is on top, never through it. Returns false when it didn't tap.
      */
     override suspend fun tap(x: Int, y: Int): Boolean {
+        // A point from a window caught mid-slide can be off screen, and GestureDescription throws
+        // for negative positions ("Path bounds must not be negative", which once ended a sync).
+        if (!screenBounds().contains(x, y)) return false
         if (WindowCover.coveringWindow(windowInfos(), x, y, service.packageName) != null) return false
-        return suspendCancellableCoroutine { continuation ->
+        val gesture = try {
             val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
-            val gesture = GestureDescription.Builder()
+            GestureDescription.Builder()
                 .addStroke(GestureDescription.StrokeDescription(path, 0, TAP_MS))
                 .build()
+        } catch (_: IllegalArgumentException) {
+            return false
+        }
+        return suspendCancellableCoroutine { continuation ->
             val callback = object : AccessibilityService.GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
                     if (continuation.isActive) continuation.resume(true)
@@ -100,6 +109,13 @@ class AndroidTeamsDevice(private val service: AccessibilityService) : TeamsDevic
             if (!service.dispatchGesture(gesture, callback, null) && continuation.isActive) continuation.resume(false)
         }
     }
+
+    private fun screenBounds(): Rect =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            service.getSystemService(WindowManager::class.java).maximumWindowMetrics.bounds
+        } else {
+            service.resources.displayMetrics.let { Rect(0, 0, it.widthPixels, it.heightPixels) }
+        }
 
     private companion object {
         const val EVENT_BURST_MS = 60L

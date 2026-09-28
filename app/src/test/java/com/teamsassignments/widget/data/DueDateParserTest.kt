@@ -70,6 +70,13 @@ class DueDateParserTest {
     }
 
     @Test
+    fun `list - work that fell due earlier today`() {
+        // Past due's label once the 08:00 homework had passed (captured at 08:56).
+        assertEquals(utc("2026-09-28T07:00:00Z"), parser.parseList("28 Sept", "Due earlier today", "Due at 08:00"))
+        assertEquals(utc("2026-09-28T07:00:00Z"), parser.parseList(null, "Due earlier today", "Due at 08:00"))
+    }
+
+    @Test
     fun `list - falls back to the relative label`() {
         assertEquals(utc("2026-09-29T08:00:00Z"), parser.parseList(null, "Tomorrow", "Due at 09:00"))
         assertEquals(utc("2026-09-21T08:00:00Z"), parser.parseList(null, "Due 7 days ago", "Due at 09:00"))
