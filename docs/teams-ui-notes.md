@@ -161,12 +161,16 @@ Findings from running the service itself, after Phase 0:
 - `ACTION_SHOW_ON_SCREEN` does scroll an off-screen card into view, so it can then be tapped.
 - **Screens slide in, and the tree reports them mid-slide.** Just after Back from an assignment, a failure dump caught the whole list window at `[-337,0][743,2340]` instead of `[0,0][1080,2340]`. A tap taken from that snapshot pointed at x = -126, which `GestureDescription` rejects outright. Taps therefore wait for their target to be at rest: the same bounds twice in a row, in a window that isn't offset (`TeamsScreens.windowAtRest`). Captured as `list_past_due_mid_transition`.
 - **"Due earlier today"** is Past due's label for work that passed its time earlier the same day (an 08:00 homework, seen at 08:56). Captured as `list_past_due_earlier_today`.
-- A full read of all 10 assignments matched Teams exactly: titles, classes, due times and instructions.
+- **Work that fell due earlier today is listed on both tabs.** Syncs at 11:16 and 13:20 found 8 + 5 and 9 + 5 open cards but only 11 and 12 different ones. The two on both tabs were the day's 08:00 and 09:00 homework, still under Forthcoming's "Today" while Past due listed them as "Due earlier today". The sync keys cards by GUID, so each counts once, under Past due. This is inferred from the counts; no Forthcoming capture from such a time exists yet.
+- **While the Assignments module loads, the WebView is empty.** A capture just after launch showed Teams' toolbar over a WebView with no children: no tabs, no cards and no spinner. It isn't mistaken for an empty list, because a list needs its tabs. Captured as `list_assignments_loading`.
+- **Forthcoming's "Next week" divider isn't in the tree.** Teams draws it between this week's date groups and later ones, but the accessibility tree holds only the usual groups (`5 Oct` / `Monday`).
+- **`uiautomator dump` switches accessibility services off while it runs.** The service logged "Service disconnected", then reconnected about a second later. A dump taken during a sync would end it, so use the app's **Dump Teams screen** mid-run, and adb dumps only while nothing is syncing.
+- A full read of all 10 assignments matched Teams exactly: titles, classes, due times and instructions. Later syncs matched Teams' lists too.
 
 Not yet seen, and worth capturing with **Dump Teams screen** when they turn up:
 
 - An **empty** Forthcoming or Past due tab. For now an empty list is believed only after holding for 2 s (6 s if that tab had work at the last sync) with no loading indicator.
-- What Teams shows **while a tab loads**. A spinner surfaces as a `ProgressBar` node, and an exact "Loading" label is also treated as loading.
+- What Teams shows **while a tab loads** after a switch. (The whole module loading at launch is captured, above.) A spinner surfaces as a `ProgressBar` node, and an exact "Loading" label is also treated as loading.
 
 Some test fixtures are **derived** from the captures rather than captured: `list_past_due_with_moved_cards`, `list_past_due_stale_rows`, `list_past_due_empty`, `list_past_due_loading`, `list_forthcoming_single`, `list_past_due_single_moved` and `detail_unreadable`. Each builds a state that's hard to catch live (a card on both tabs, a tab selected before its rows load, an empty or loading list, a single card moving tabs, an unreadable detail screen) by editing a real capture. [`scripts/derive_fixtures.py`](../scripts/derive_fixtures.py) regenerates them after fresh captures.
 
