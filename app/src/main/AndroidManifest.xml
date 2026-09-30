@@ -45,6 +45,15 @@
             android:taskAffinity=""
             android:theme="@style/Theme.TeamsAssignments.Trampoline" />
 
+        <!-- Not invisible: it asks before handing anything in, in a dialog over the home screen. -->
+        <activity
+            android:name=".ui.HandInActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.TeamsAssignments.Trampoline" />
+
         <!-- Only the system can bind it (BIND_ACCESSIBILITY_SERVICE). -->
         <service
             android:name=".automation.TeamsAutomationService"

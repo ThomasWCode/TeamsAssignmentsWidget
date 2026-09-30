@@ -37,6 +37,17 @@ data class AutomationConfig(
     /** Wait before repeating Back when the previous press seems to have been missed. */
     val backRetryMs: Long = 3_000,
     val maxScrolls: Int = 15,
+    /** How long Teams has to show work as handed in once Hand in is pressed. */
+    val handInConfirmTimeoutMs: Long = 20_000,
+    /** How far apart the two open tabs may be read for work on neither to be taken as handed in. */
+    val bothTabsWithinMs: Long = 10 * 60_000,
+    /**
+     * Work falling due from this long before the open tabs were read, to [movedTabsAfterMs] after,
+     * may have moved from one to the other meanwhile (Teams may also have sorted a list when it
+     * loaded it), so it is never taken as handed in for being on neither.
+     */
+    val movedTabsBeforeMs: Long = 10 * 60_000,
+    val movedTabsAfterMs: Long = 2 * 60_000,
 )
 
 /**
@@ -254,7 +265,7 @@ abstract class TeamsAutomation(
             backToList()
             return null
         }
-        if (detail != null && expected != null && !sameTitle(detail.title, expected)) {
+        if (detail != null && expected != null && !TeamsScreens.sameTitle(detail.title, expected)) {
             log("Opened \"${detail.title}\" instead of \"$expected\"")
             backToList()
             return null
@@ -427,15 +438,6 @@ abstract class TeamsAutomation(
         }
         return if (blocked) null else x to y
     }
-
-    private fun sameTitle(actual: String?, expected: String): Boolean {
-        val a = actual?.normalizedTitle() ?: return false
-        val e = expected.normalizedTitle()
-        // A collapsed card's title is parsed from concatenated text, so allow a prefix match.
-        return a == e || e.startsWith(a)
-    }
-
-    private fun String.normalizedTitle() = lowercase().replace(Regex("\\s+"), " ").trim()
 
     private companion object {
         // Taps are what work on the phone, so a missed tap gets a second one; the click action in

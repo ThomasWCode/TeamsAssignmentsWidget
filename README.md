@@ -1,6 +1,6 @@
 # Teams Assignments Widget
 
-An Android home-screen widget that lists your **Microsoft Teams assignments that haven't been handed in**. Each row shows the title, when it's due and the class, and rows are grouped under Overdue, Today, Tomorrow and so on. The **↻** button re-syncs, and tapping a row opens that assignment in Teams.
+An Android home-screen widget that lists your **Microsoft Teams assignments that haven't been handed in**. Each row shows the title, when it's due and the class, and rows are grouped under Overdue, Today, Tomorrow and so on. The **↻** button re-syncs, tapping a row opens that assignment in Teams, and each row's **Hand in** button hands it in, after asking. Browsing Assignments in Teams yourself keeps the list up to date too.
 
 It's a personal, sideloaded app. It isn't on Google Play, and can't be, because it uses Android's accessibility API to read the Teams app.
 
@@ -16,10 +16,36 @@ A progress pill shows while it works ("Syncing assignments 3/7 · Cancel"). A fi
 
 Tapping a row opens Teams and taps that assignment's card for you. Cards are found by the assignment's own ID, so the right one opens even when several share a title.
 
+### Handing in
+
+Each row has a **Hand in** button. It asks first ("Hand in late?" once the work is overdue). Then the service opens the assignment the way a row tap does, checks that the screen is that assignment's (its title exactly) and still not handed in, and presses Teams' own **Hand in** (or **Hand in late**) button once. When Teams shows it as handed in, the row goes and the phone returns to the home screen.
+
+- It hands in whatever work is already attached in Teams. It can't attach anything.
+- **Cancel** on the pill works until Hand in is pressed. From then on, the hand-in can't be called off.
+- If the screen that opens isn't exactly that assignment's (a same-named one, say), nothing is pressed and a capture of the screen is saved.
+- If Teams doesn't show it as handed in within 20 seconds, Teams stays open on the assignment so you can check, and a capture of the screen is saved.
+- An assignment the app has only seen on its own screen (see below) needs a sync first, so it can be found by its ID.
+- If it's on neither Forthcoming nor Past due, with both lists read in full (as below), nothing is pressed and it's taken as handed in, as a sync would. Tapping a row does the same.
+
+### While you use Teams
+
+When you open Assignments in Teams yourself, the app reads what's on screen, without pressing anything or showing anything:
+
+- new assignments on the Forthcoming or Past due list are added, without their instructions until you open one or sync;
+- changed titles and due times are updated;
+- opening an assignment saves its instructions, and adds it if the list hadn't shown it yet (say you came from a Teams notification);
+- anything Teams shows as done is removed: everything on the Completed list, and an assignment whose own screen says it's handed in;
+- an assignment on **neither** Forthcoming nor Past due is taken as handed in, once you've seen both lists in full, within ten minutes of each other.
+
+A list only counts once it has fully loaded, by the same tests a sync uses: the tab is selected, nothing is loading, the cards have stayed the same for 0.6 s (an empty list for 2 s, or 6 s if that tab had work at the last sync), and a tab you've just switched to isn't still showing the last tab's cards. *In full* means every card. Teams currently puts the whole list where the app can read it, cards off screen included, so one look is enough; if an update ever stopped that, you'd have to scroll from one end of the list to the other, pausing as you go, for it to count.
+
+Work falling due around the time you looked is left alone, since it may simply have moved from one list to the other. And anything taken as handed in this way comes back as soon as a list shows it again. Work Teams has shown as handed in, or that the widget handed in, isn't added back for 12 hours, even by a list Teams hasn't refreshed yet, and the app remembers this across restarts. A sync (↻) goes by Teams' lists alone.
+
 ### Safety and privacy
 
-- It **only presses tabs and assignment cards**. It never presses a button, and never *Hand in*, *Attach* or anything else that changes Teams. Taps go to the centre of a card's title, and are refused if a button, the notification shade or the keyboard covers that spot.
-- It only acts when you tap ↻ or a row. Otherwise it ignores everything, and it only receives events from Teams.
+- **Syncing and opening only press tabs and assignment cards.** They never press a button, and never *Hand in*, *Attach* or anything else that changes Teams. Taps go to the centre of a card's title, and are refused if a button, the notification shade or the keyboard covers that spot.
+- **Hand in is the one exception, and only when you ask.** Once you confirm on the widget, it presses the *Hand in* button in Teams' toolbar for that assignment, found by its ID, and nothing else: never *Undo hand in*, *Attach* or anything that changes your work.
+- It only acts when you tap ↻, a row or *Hand in*. Otherwise it only reads, and only while Teams shows Assignments. It only receives events from Teams.
 - Everything stays on the phone: a small JSON file in the app's private storage, with nothing backed up or sent anywhere.
 - If a sync fails or you cancel it, the previous list stays and the widget says what happened.
 
@@ -49,10 +75,15 @@ Then tap **↻**, and leave the phone alone until it returns to the home screen.
 | *Sync stopped* | Teams went out of view mid-sync: you went Home or to another app, pulled down the notification shade, or a call came in. The list is from the time shown. Just sync again. |
 | *Last sync failed: Couldn't read the … list* or similar | Teams may have changed its layout. See below. |
 | Wrong or missing details | Run **Full resync** in the app. |
+| *Hand in pressed, but Teams didn't confirm it* | Check the assignment in Teams: it may have been handed in anyway. If it was, a sync or a look at Completed takes it off the list. The saved capture shows what Teams did instead. |
+| *Nothing handed in: Teams showed no Hand in button …* | The assignment's screen had no Hand in button that could be pressed, for example because it's closed. Teams is left open on it. |
+| *Nothing handed in: the screen Teams opened wasn't exactly …* | Its title didn't exactly match the assignment chosen: a same-named one, perhaps, or one renamed since the last sync. Teams is left open on that screen and a capture is saved. Tap **↻**, then try again. |
+| *Nothing pressed: … is on neither Forthcoming nor Past due, so it's taken as handed in* (or *Taken as handed in: …* after a row tap) | It was most likely handed in on another device, or the teacher removed it. If it shouldn't have gone, **↻** brings it back. |
+| *Nothing handed in: couldn't find … on Teams' Forthcoming or Past due list* | A list couldn't be read in full, perhaps still loading. Nothing was pressed or removed; try again, or tap **↻**. |
 
 **When a Teams update breaks syncing**, the app gives you what's needed to fix it:
 
-- A sync that fails by itself saves a capture of the screen it got stuck on. One you cancel, or leave by switching apps, doesn't.
+- A sync that fails by itself saves a capture of the screen it got stuck on, as does a hand-in that meets an unexpected screen or that Teams doesn't confirm. One you cancel, or leave by switching apps, doesn't.
 - **Troubleshooting → Dump Teams screen** shows a *Capture* button over Teams. Go to the screen in question, tap it, and share the file.
 - **Recent steps** lists what the automation did. The same log is in `adb logcat -s TeamsAutomation`.
 
@@ -77,10 +108,11 @@ Everything that decides what to press or save is plain Kotlin, tested on the JVM
 app/src/main/java/com/teamsassignments/widget/
   data/        Assignment model, JSON store, due-date parsing, date sections, class colours, sync log
   automation/  TeamsSelectors (every Teams-specific matcher), TeamsScreens (parsers),
-               TeamsAutomation + SyncStateMachine + NavigateStateMachine (the workflows),
+               TeamsAutomation + SyncStateMachine + NavigateStateMachine + HandInStateMachine
+               (the workflows), TeamsObserver (reading while you use Teams),
                TeamsAutomationService and the Android glue (node snapshots, taps, overlay, dumper)
   widget/      The Glance widget, its receiver, and redraw scheduling
-  ui/          Setup screen, and the widget's invisible trampoline activities
+  ui/          Setup screen, the widget's invisible trampoline activities, and its hand-in confirmation
 app/src/test/  Unit tests, a fake phone that serves the captures, and the captures themselves
 scripts/       derive_fixtures.py: builds the edge-case fixtures from the captures
 ```
@@ -92,10 +124,13 @@ scripts/       derive_fixtures.py: builds the edge-case fixtures from the captur
 - a sync stopped by Cancel, by going Home, and by pulling down the notification shade;
 - the service switched off and back on;
 - light and dark themes;
-- resizing down to the launcher's smallest size, 3×2.
+- resizing down to the launcher's smallest size, 3×2;
+- handing in from the widget (a late one), and reading along while Teams is open: instructions saved on opening an assignment, and an assignment handed in within Teams taken off the list.
+
+**Deferred:** nothing added since then has been checked on the phone yet. That includes taking work on neither open list as handed in, and the fixes from review. The checks are listed under [Deferred live tests](docs/teams-ui-notes.md#deferred-live-tests).
 
 ## Known limitations
 
 - **Tied to the Teams app's layout and English (en-GB) wording.** An update to Teams can break syncing until `TeamsSelectors.kt` is updated.
-- **Takes over the screen while syncing.** Syncing is manual only, and doesn't run while the phone is locked. The widget still redraws at midnight and as deadlines pass, from saved data, so "Today" and "Overdue" stay right.
+- **Takes over the screen while syncing** and while handing in. Syncing is manual only, and doesn't run while the phone is locked; browsing Assignments in Teams updates the list without taking over. The widget still redraws at midnight and as deadlines pass, from saved data, so "Today" and "Overdue" stay right.
 - Assignments you've handed in, and anything older than Teams' *Past due* list, aren't shown.

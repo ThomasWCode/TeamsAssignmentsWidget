@@ -72,6 +72,7 @@
         android:layout_marginBottom="6dp"
         android:background="@drawable/widget_preview_card"
         android:clipToOutline="true"
+        android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <FrameLayout
@@ -80,8 +81,9 @@
             android:background="#FF4F86F7" />
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:orientation="vertical"
             android:paddingHorizontal="10dp"
             android:paddingVertical="8dp">
@@ -100,6 +102,18 @@
                 android:textColor="@color/widget_preview_on_surface_variant"
                 android:textSize="12sp" />
         </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/widget_preview_hand_in"
+            android:fontFamily="sans-serif-medium"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="7dp"
+            android:text="@string/widget_preview_hand_in"
+            android:textColor="@color/widget_preview_on_hand_in"
+            android:textSize="12sp" />
     </LinearLayout>
 
     <LinearLayout
@@ -107,6 +121,7 @@
         android:layout_height="wrap_content"
         android:background="@drawable/widget_preview_card"
         android:clipToOutline="true"
+        android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <FrameLayout
@@ -115,8 +130,9 @@
             android:background="#FFE8A317" />
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:orientation="vertical"
             android:paddingHorizontal="10dp"
             android:paddingVertical="8dp">
@@ -135,5 +151,17 @@
                 android:textColor="@color/widget_preview_on_surface_variant"
                 android:textSize="12sp" />
         </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/widget_preview_hand_in"
+            android:fontFamily="sans-serif-medium"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="7dp"
+            android:text="@string/widget_preview_hand_in"
+            android:textColor="@color/widget_preview_on_hand_in"
+            android:textSize="12sp" />
     </LinearLayout>
 </LinearLayout>

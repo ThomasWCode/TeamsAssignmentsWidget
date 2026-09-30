@@ -33,6 +33,8 @@ The native shell is a toolbar plus a `WebView`. The WebView's accessibility tree
 
 - **HTML `id`s become view IDs.** WebView nodes report the raw id (`tab-Forthcoming`). Native views report the usual `com.microsoft.teams:id/<name>`. Matchers compare the part after `:id/`.
 - **The whole list is in the tree, including off-screen rows.** Off-screen nodes have bounds clamped to the viewport edge with zero height (for example `[45,2298][1023,2298]`). All 7 Forthcoming cards and all 30 Completed cards were present without scrolling. The sync still scrolls defensively in case a longer list is virtualised.
+  - Rows scrolled past stay in the tree too, clamped to the **top** edge (`[45,261][1023,261]` in `list_forthcoming_scrolled`). The `ListView` holding the cards is clamped the same way, so its bounds show which ends of the list are on screen: its top below the viewport's top means the list's start is in view, its bottom above the viewport's bottom means its end is. Past due's closing line sits inside the `ListView`, clamped at the bottom when off screen.
+  - So `TeamsScreens.wholeListInTree` counts a list as whole when, at each end where it runs off screen, something of it is clamped to that edge. A virtualised list, holding only the rows in view, would have nothing there (derived fixtures `list_forthcoming_virtualised…`).
 - **Each card's id is the assignment's GUID** (for example `36274911-c6dd-490d-956d-0273df409847`, the Graph assignment id). This gives a stable key and lets a row tap find its exact card. It replaces the plan's hash of class + title.
 - **`fui-CardHeader__headerEDUASSIGN-r6` style ids are not stable.** The `r6` suffix changes on every render. Only the `fui-CardHeader__header` prefix can be matched.
 
@@ -81,6 +83,8 @@ Relative labels seen:
 
 The Past due list ends with `To view older assignments, navigate to an individual class team.`
 
+The Completed list ends with a zero-height `ProgressBar` (`SHIMMER_GROUP`) below its last card, a placeholder for loading more. It is in the tree whenever the tab is open, so reading along only counts loading indicators that are on screen.
+
 ### Collapsed cards
 
 After you return from a detail screen, **the card you just visited collapses into a single leaf**. Its children disappear and the card node's own text becomes their concatenation:
@@ -98,7 +102,7 @@ Toolbar (native)
   ImageButton #overflow_menu_button cd='Back'
   TextView #action_bar_title_text       ← CLASS NAME
   TextView #action_bar_sub_title_text   ← "Assignments"
-  Button "HAND IN" / "HAND IN LATE"     ← NEVER CLICK
+  Button "HAND IN" / "HAND IN LATE"     ← only the hand-in workflow presses it; "UNDO HAND-IN" once handed in
 WebView
   View #assignmentViewerVisibilityContainer   ← detail-screen marker
     TextView "Not handed in"                  ← status
@@ -142,9 +146,11 @@ Instructions are the nodes between `Instructions` and the first of `Reference ma
 
 ## Safety
 
-The automation only ever presses **tab nodes** (`tab-*`) and **assignment cards** (a GUID id), and never anything whose class is a `Button`.
-As a second guard, it refuses a tab whose label matches hand-in, turn-in, submit, attach, delete or similar.
+Syncing and opening an assignment only ever press **tab nodes** (`tab-*`) and **assignment cards** (a GUID id), and never anything whose class is a `Button`.
+As a second guard, they refuse a tab whose label matches hand-in, turn-in, submit, attach, delete or similar.
 The `HAND IN` / `HAND IN LATE` toolbar button and the `Open Attach menu` / `Open New menu` buttons are the dangerous controls on the detail screen.
+
+The one exception is the **hand-in workflow**, which runs only after the user confirms on the widget. It opens the assignment by its GUID (never by title), checks that the screen's title is exactly the assignment's (as the list showed it, or as saved: opening a card allows a prefix, for a collapsed card's cut-short title, but handing in doesn't) and that the status isn't handed in, and presses the `Button` in the native `toolbar` whose text is exactly `HAND IN` or `HAND IN LATE`, and enabled. It uses the button's click action: it's a native view, which takes click actions the way TalkBack presses it, unlike the WebView content. It presses once, and a second time only if Teams reports that the first click didn't go through. It never presses `UNDO HAND-IN` or anything else, and never taps the toolbar.
 
 Gesture taps (see below) have extra rules:
 
@@ -171,8 +177,50 @@ Not yet seen, and worth capturing with **Dump Teams screen** when they turn up:
 
 - An **empty** Forthcoming or Past due tab. For now an empty list is believed only after holding for 2 s (6 s if that tab had work at the last sync) with no loading indicator.
 - What Teams shows **while a tab loads** after a switch. (The whole module loading at launch is captured, above.) A spinner surfaces as a `ProgressBar` node, and an exact "Loading" label is also treated as loading.
+- An **on-time** hand-in's status. Only a late one has been captured (below); the check accepts any status starting `Handed in`, `Turned in` or `Submitted`.
+- A detail screen opened **from a Teams notification**, rather than from the list. Reading along only trusts its toolbar title as the class name while the subtitle reads `Assignments`.
 
-Some test fixtures are **derived** from the captures rather than captured: `list_past_due_with_moved_cards`, `list_past_due_stale_rows`, `list_past_due_empty`, `list_past_due_loading`, `list_forthcoming_single`, `list_past_due_single_moved` and `detail_unreadable`. Each builds a state that's hard to catch live (a card on both tabs, a tab selected before its rows load, an empty or loading list, a single card moving tabs, an unreadable detail screen) by editing a real capture. [`scripts/derive_fixtures.py`](../scripts/derive_fixtures.py) regenerates them after fresh captures.
+Some test fixtures are **derived** from the captures rather than captured: `list_past_due_with_moved_cards`, `list_past_due_stale_rows`, `list_completed_stale_rows`, `list_past_due_completed_rows`, `list_past_due_empty`, `list_past_due_loading`, `list_forthcoming_single`, `list_past_due_single_moved`, `list_forthcoming_virtualised` (with `_scrolled` and `_end`), `detail_unreadable`, `detail_4c958b24_handed_in`, `detail_88fafeb2_handed_in`, `detail_4c958b24_hand_in_disabled` and `detail_4c958b24_prefix_title`. Each builds a state that's hard to catch live (a card on both tabs, a tab selected before its rows load or still showing another tab's, an empty or loading list, a single card moving tabs, an unreadable detail screen, a same-named assignment's screen whose title only starts the chosen one's), seen only once (a handed-in detail screen, carried over from the captured `detail_f63a23c9_handed_in` to other assignments), or not seen at all (a greyed-out Hand in button, a list holding only the rows in view), by editing a real capture. [`scripts/derive_fixtures.py`](../scripts/derive_fixtures.py) regenerates them after fresh captures.
+
+## Handing in and reading along (0.2.0 on the phone)
+
+- **The detail screen once handed in**, captured as `detail_f63a23c9_handed_in` just after "Dr. Frost - Forces - Week 3" was handed in within Teams:
+  - the status reads `Handed in late Wed 30 Sept 2026 at 10:54`;
+  - the toolbar button reads `UNDO HAND-IN`, **hyphenated**, where the Hand in button reads `HAND IN`. The first matcher, written before this capture, missed the hyphen; the status line had confirmed hand-ins regardless;
+  - the `Open Attach menu` and `Open New menu` buttons are disabled;
+  - Teams also puts the status in a `screenReaderAnnouncement` node, outside the detail container.
+- **Handing in from the widget** ("Prep 18/09/2026 - Chapter 12 review", past due): `HAND IN LATE` took the click action, and the status read handed in within 2 s, with no prompt or dialog in between.
+- **Reading along** saved the Dr. Frost assignment's details when it was opened, and took it off the list as soon as Teams showed it handed in.
+- A hand-in for work handed in before 0.2.0 was installed (so the widget still listed it) found the card on neither open tab and pressed nothing. A sync then dropped it.
+
+## Deferred live tests
+
+Everything added since that run passes the unit tests, against the captures and the fixtures derived from them, but hasn't been checked on the phone yet. These checks are deferred to the next session with the phone. A hand-in check really hands the work in, so run those only on work that's ready.
+
+To run:
+
+- [ ] **Taken as handed in while reading along.** Hand something in on another device, then open Forthcoming and then Past due on the phone, pausing a couple of seconds on each. Its row goes, and the log reads `Seen in Teams: "…" is on neither Forthcoming nor Past due: taken as handed in`.
+- [ ] **Nothing taken on too little.** Opening only one of the two tabs, or the two more than 10 minutes apart, removes nothing.
+- [ ] **Brought back.** Work taken as handed in that wasn't comes back the next time its list is opened.
+- [ ] **Taken as handed in by a row tap or a hand-in**, on work handed in elsewhere. The toast reads *Taken as handed in: …* after a row tap, or *Nothing pressed: … is on neither Forthcoming nor Past due, so it's taken as handed in.* after a hand-in. The run above predates this and got *couldn't find*.
+- [ ] **Cancel at the last moment.** Tap Hand in, confirm, then tap Cancel on the pill straight away. The toast reads *Hand-in cancelled. Nothing was handed in.*, and Teams still shows the work as not handed in.
+- [ ] **Hand in on time.** Only `HAND IN LATE` has been pressed live, never `HAND IN`.
+- [ ] **Instructions saved after a row tap.** Tap a row, then read the assignment without touching the screen. The log gains `Seen in Teams: read "…"`.
+- [ ] **Looks resume after other screens.** Open a chat in Teams, go back to Assignments within a few seconds, and open an assignment not read before. Its instructions are still saved.
+- [ ] **Work from a notification.** A new assignment opened from a Teams notification is added, and gets its GUID the next time its list is seen. Until then its Hand in button answers *Sync with ↻ first, so Teams can find this assignment*.
+- [ ] **The widget's Hand in pill** at narrow widths (an icon below 250 dp), and the confirmation dialog in light and dark themes. So far these have only been rendered off-device.
+
+Too rare to set up; worth a capture with **Dump Teams screen** if one turns up:
+
+- a hand-in that stops because the screen Teams opened wasn't exactly the assignment's;
+- a hand-in with no Hand in button, or one Teams doesn't confirm within 20 s;
+- a slow Teams launch during a hand-in, which now has the hand-in's 45 s, not 25 s, to find the assignment;
+- a copy of Assignments that fails, and is retried;
+- a newly selected tab still showing the last tab's cards after a spinner;
+- work falling due while the tabs are read, which is left alone;
+- work opened from a notification that shares its title with a saved assignment: another class's is added alongside, another week's in the same class is left to the list;
+- a list Teams hasn't refreshed still showing work handed in, after a restart or after Completed showed it: it isn't added back;
+- a list that doesn't hold all its rows in the tree, which counts only once scrolled from end to end.
 
 ## Consequences for the plan
 
@@ -181,3 +229,9 @@ Some test fixtures are **derived** from the captures rather than captured: `list
 3. **Row tap → open**: the service opens Assignments, selects the tab the assignment was last seen in (falling back to the other one), finds the card by GUID, scrolls it on screen and taps it. Matching by GUID replaces the plan's match on title and class.
 4. The due date is built from the date header + `Due at HH:MM` in the list, with the year inferred as the nearest date to now. The detail screen's due text is authoritative when it parses.
 5. The class name comes from the detail toolbar when available, otherwise from the card.
+
+Added later:
+
+6. **Hand in** presses the toolbar button described under Safety, then waits for the detail screen to show the work as handed in. Cancel holds right up to the press: the check for it and the removal of the pill's button happen together on the main thread, where Cancel is handled.
+7. **Reading along**: while nothing runs, a change in Teams prompts a look, as does the end of a workflow, for the screen it left open (the assignment a row tap opened, say). A cheap check of the native toolbar (`action_bar_title_text` or `action_bar_sub_title_text` reading `Assignments`) decides whether to copy the window at all. A list counts once it has loaded by the sync's own tests (tab selected, no loading indicator, cards unchanged for 600 ms, an empty list for 2 s or 6 s, and not the rows the tab was selected over), Completed's off-screen placeholder aside. Lists add and update cards; a detail screen, matched to a saved assignment by title, class and due time (a due time known on both sides must agree, even for a lone match, since weekly work repeats its title and class), adds its instructions; anything on Completed, or shown as handed in, is removed. Away from Assignments, Teams is checked at most every 5 s unless it opens another screen, and a change held back meanwhile still gets its look; a copy of Assignments that fails is retried, up to 5 times in a row. What Teams showed as handed in (still listed or not), and what the widget handed in, is kept in the saved state for 12 hours, so a list Teams hasn't refreshed can't add it back, even after a restart.
+8. **Taken as handed in**: an assignment is also removed for being on neither open tab, but only once both have been seen in full (whole in the tree, or scrolled through from end to end with every settled view overlapping the last) within 10 minutes of each other. Neither may show handed-in cards (Completed's rows, still showing) or the same cards as the other. Work falling due from 10 minutes before the first look to 2 minutes after the second is left alone, as it may have moved between the tabs. These removals aren't remembered, so a list showing the assignment again restores it. Row taps and hand-ins apply the same rule to the two tabs they read, but only to lists whole in the tree, since they don't scroll right through a list.

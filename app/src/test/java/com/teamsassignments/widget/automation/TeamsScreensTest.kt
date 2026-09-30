@@ -4,6 +4,7 @@ import com.teamsassignments.widget.automation.TeamsSelectors.Tab
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -180,6 +181,16 @@ class TeamsScreensTest {
     }
 
     @Test
+    fun `the Completed list's off-screen placeholder isn't loading on screen`() {
+        // Captured: Completed keeps a zero-height ProgressBar (SHIMMER_GROUP) below its last card.
+        val completed = Fixtures.load("list_completed")
+        assertTrue(TeamsScreens.isLoading(completed))
+        assertFalse(TeamsScreens.isLoadingOnScreen(completed))
+        assertTrue(TeamsScreens.isLoadingOnScreen(Fixtures.load("list_past_due_loading")))
+        assertFalse(TeamsScreens.isLoadingOnScreen(Fixtures.load("list_forthcoming")))
+    }
+
+    @Test
     fun `the Assignments module still loading is no list yet`() {
         // Captured on the phone just after launch: Teams' toolbar over an empty WebView. There is
         // no spinner to spot, so it is the missing tabs that keep this from reading as an empty list.
@@ -217,6 +228,27 @@ class TeamsScreensTest {
         assertFalse(probe.ends("list_forthcoming")) // the last cards are below the fold
         assertTrue(probe.ends("list_forthcoming_scrolled")) // scrolled to the end
         assertTrue(probe.ends("list_past_due")) // three cards and a footer
+    }
+
+    @Test
+    fun `the tree holds the whole list, scrolled or not`() {
+        // Teams keeps every row in the tree: those out of view have zero height at the edge they're
+        // past, the bottom until reached and the top once scrolled past. The Past due footer too.
+        listOf(
+            "list_forthcoming", "list_forthcoming_scrolled", "list_past_due", "list_past_due_earlier_today",
+            "list_completed", "list_past_due_empty",
+        ).forEach { assertTrue(TeamsScreens.wholeListInTree(Fixtures.load(it)), it) }
+        assertEquals(TeamsScreens.ListInView(top = true, bottom = false), TeamsScreens.listInView(Fixtures.load("list_forthcoming")))
+        assertEquals(TeamsScreens.ListInView(top = false, bottom = true), TeamsScreens.listInView(Fixtures.load("list_forthcoming_scrolled")))
+        assertEquals(TeamsScreens.ListInView(top = true, bottom = true), TeamsScreens.listInView(Fixtures.load("list_past_due")))
+    }
+
+    @Test
+    fun `a list holding only the rows in view isn't whole`() {
+        // Derived: a virtualised list, which Teams' isn't, would have to be scrolled through.
+        listOf("list_forthcoming_virtualised", "list_forthcoming_virtualised_scrolled", "list_forthcoming_virtualised_end")
+            .forEach { assertFalse(TeamsScreens.wholeListInTree(Fixtures.load(it)), it) }
+        assertFalse(TeamsScreens.wholeListInTree(Fixtures.load("list_assignments_loading"))) // no list at all yet
     }
 
     @Test
@@ -372,5 +404,66 @@ class TeamsScreensTest {
         assertFalse("Reference materials" in text, text)
         assertFalse(".docx" in text, text)
         assertFalse("Show details" in text, text)
+    }
+
+    // Handing in
+
+    @Test
+    fun `finds Teams' Hand in button on every captured detail screen`() {
+        val pastDue = setOf("88fafeb2", "d3f67007", "d53f5f50")
+        listOf(
+            "36274911", "738f66ce", "4c958b24", "839994fb", "b0ccf04e",
+            "f63a23c9", "66fcdab0", "88fafeb2", "d3f67007", "d53f5f50",
+        ).forEach { id ->
+            val root = Fixtures.load("detail_$id")
+            val button = assertNotNull(TeamsScreens.handInButton(root), id)
+            assertEquals(if (id in pastDue) "HAND IN LATE" else "HAND IN", button.text, id)
+            assertTrue(button.isEnabled, id)
+            assertFalse(TeamsScreens.offersUndoHandIn(root), id)
+            assertTrue(TeamsScreens.classInToolbar(root), id)
+        }
+        val list = Fixtures.load("list_forthcoming")
+        assertNull(TeamsScreens.handInButton(list))
+        assertFalse(TeamsScreens.classInToolbar(list))
+    }
+
+    @Test
+    fun `reads the detail screen Teams showed after a hand-in`() {
+        // Captured on the phone just after "Dr. Frost - Forces - Week 3" was handed in, late, in Teams.
+        val root = Fixtures.load("detail_f63a23c9_handed_in")
+        with(TeamsScreens.detail(root)!!) {
+            assertEquals("Handed in late Wed 30 Sept 2026 at 10:54", status)
+            assertTrue(isHandedIn)
+            assertEquals("Dr. Frost - Forces - Week 3", title)
+            assertEquals("Due today at 08:30", dueText)
+            assertEquals("12.34 - Further Maths Mechanics - Mr Ryder Richardson 26/27", className)
+            assertEquals(detail("detail_f63a23c9").instructions, instructions)
+        }
+        // The button now reads UNDO HAND-IN, hyphen and all: an undo, never a Hand in.
+        assertNull(TeamsScreens.handInButton(root))
+        assertTrue(TeamsScreens.offersUndoHandIn(root))
+        assertTrue(TeamsScreens.classInToolbar(root))
+    }
+
+    @Test
+    fun `a handed-in detail screen offers Undo, not Hand in`() {
+        // Derived from the captures, in the wording of detail_f63a23c9_handed_in.
+        listOf("detail_4c958b24_handed_in", "detail_88fafeb2_handed_in").forEach { fixture ->
+            val root = Fixtures.load(fixture)
+            assertNull(TeamsScreens.handInButton(root), fixture)
+            assertTrue(TeamsScreens.offersUndoHandIn(root), fixture)
+            assertTrue(TeamsScreens.detail(root)!!.isHandedIn, fixture)
+        }
+    }
+
+    @Test
+    fun `a Hand in button outside Teams' toolbar isn't taken for it`() {
+        val pageButton = FakeNode(
+            className = "android.widget.Button", text = "Hand in", contentDescription = "", viewId = "",
+            bounds = IntRect(0, 0, 100, 100), isClickable = true, isScrollable = false, isSelected = false,
+            children = emptyList(), onAction = { _, _ -> false },
+        )
+        val root = node("", children = listOf(node("", id = TeamsSelectors.DETAIL_CONTAINER, children = listOf(pageButton))))
+        assertNull(TeamsScreens.handInButton(root))
     }
 }
