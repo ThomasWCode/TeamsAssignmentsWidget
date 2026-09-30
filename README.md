@@ -127,6 +127,8 @@ scripts/       derive_fixtures.py: builds the edge-case fixtures from the captur
 - resizing down to the launcher's smallest size, 3×2;
 - handing in from the widget (a late one), and reading along while Teams is open: instructions saved on opening an assignment, and an assignment handed in within Teams taken off the list.
 
+**Deferred:** nothing added since then has been checked on the phone yet. That includes taking work on neither open list as handed in, and the fixes from review. The checks are listed under [Deferred live tests](docs/teams-ui-notes.md#deferred-live-tests).
+
 ## Known limitations
 
 - **Tied to the Teams app's layout and English (en-GB) wording.** An update to Teams can break syncing until `TeamsSelectors.kt` is updated.
