@@ -57,12 +57,7 @@ class TeamsAutomationService : AccessibilityService() {
 
     /** Whether Teams has opened another screen since the last look. */
     private var teamsScreenChanged = false
-
-    /** When the last look found Teams on something other than Assignments ([SystemClock] time), if it did. */
-    private var elsewhereAt: Long? = null
-
-    /** Keys handed in lately, and when: see [TeamsObserver.merge]. */
-    private val recentlyHandedIn = mutableMapOf<String, Long>()
+    private val pacer = LookPacer()
 
     val isBusy: Boolean get() = job?.isActive == true
     val isDumperArmed: Boolean get() = ::dumper.isInitialized && dumper.isArmed
@@ -167,8 +162,9 @@ class TeamsAutomationService : AccessibilityService() {
                 }
             }
             if (opened == false && navigate.notListed) {
-                // Both open tabs read in full, and it's on neither: as a sync would, drop it.
-                store.markHandedIn(target.key)
+                // Both open tabs read in full, and it's on neither: as a sync would, drop it. Not
+                // remembered as handed in, so were that wrong, the next look at its list restores it.
+                store.markHandedIn(target.key, remembered = false)
                 log.add("\"${target.title}\" taken as handed in")
                 log.persist()
                 WidgetUpdater.update(this@TeamsAutomationService)
@@ -275,9 +271,17 @@ class TeamsAutomationService : AccessibilityService() {
                     log = log::add,
                     isCancelled = { cancelRequested },
                     onPressing = {
-                        pressed = true
-                        // Once Hand in is pressed there is nothing left to cancel, so the pill loses its button.
-                        withContext(Dispatchers.Main.immediate) { banner.show("Handing in…", "", showSpinner = true) {} }
+                        // On the main thread, where Cancel is handled: either it was tapped already, or
+                        // the pill loses its button now, and nothing can call the hand-in off after.
+                        withContext(Dispatchers.Main.immediate) {
+                            if (cancelRequested) {
+                                false
+                            } else {
+                                pressed = true
+                                banner.show("Handing in…", "", showSpinner = true) {}
+                                true
+                            }
+                        }
                     },
                 ).run(target, store.state.value.assignments)
             }
@@ -285,19 +289,22 @@ class TeamsAutomationService : AccessibilityService() {
             when (result) {
                 HandInResult.HandedIn, HandInResult.AlreadyHandedIn -> {
                     store.markHandedIn(target.key)
-                    noteHandedIn(listOf(target.key))
                     backToWidget = true
                     if (result == HandInResult.HandedIn) "Handed in $name" else "$name was already handed in"
                 }
                 // Both open tabs read in full, and it's on neither: as a sync would, drop it. Not
                 // remembered as handed in, so were that wrong, the next look at its list restores it.
                 HandInResult.NotListed -> {
-                    store.markHandedIn(target.key)
+                    store.markHandedIn(target.key, remembered = false)
                     backToWidget = true
                     "Nothing pressed: $name is on neither Forthcoming nor Past due, so it's taken as handed in."
                 }
                 // It couldn't all be read in full; a sync (↻) settles it.
                 HandInResult.NotFound -> "Nothing handed in: couldn't find $name on Teams' Forthcoming or Past due list. ↻ updates the widget."
+                HandInResult.Mismatch -> {
+                    dumper.saveFailureDump()
+                    "Nothing handed in: the screen Teams opened wasn't exactly $name."
+                }
                 HandInResult.NoButton -> {
                     dumper.saveFailureDump()
                     "Nothing handed in: Teams showed no Hand in button for $name."
@@ -334,12 +341,13 @@ class TeamsAutomationService : AccessibilityService() {
 
     /**
      * Keeps the list up to date from what the user looks at in Teams Assignments, pressing
-     * nothing (see [TeamsObserver]). It looks shortly after Teams changes, and again while the
-     * screen is still settling; changes that arrive meanwhile are caught by the next look.
+     * nothing (see [TeamsObserver]). It looks shortly after Teams changes, again while the screen
+     * is still settling, and when [LookPacer] says a look is owed; changes that arrive meanwhile
+     * are caught by the next look.
      */
     private suspend fun watchTeams() {
         delay(LOOK_DELAY_MS)
-        while (teamsChanged || observer.settling) {
+        while (teamsChanged || observer.settling || pacer.owed) {
             teamsChanged = false
             if (isBusy) return
             lookAtTeams()
@@ -348,40 +356,43 @@ class TeamsAutomationService : AccessibilityService() {
     }
 
     private suspend fun lookAtTeams() {
-        // Elsewhere in Teams, in a chat say, things change all the time: until Teams opens another
-        // screen, check again only every few seconds rather than after every change.
+        // Elsewhere in Teams, in a chat say, things change all the time: see LookPacer.
         val now = SystemClock.elapsedRealtime()
-        val lastElsewhere = elsewhereAt
-        if (lastElsewhere != null && !teamsScreenChanged && now - lastElsewhere < ELSEWHERE_RECHECK_MS) return
+        if (!pacer.shouldLook(now, teamsScreenChanged)) return
         teamsScreenChanged = false
+        var onAssignments = false
         val root = withContext(Dispatchers.Default) {
             try {
                 // The toolbar check is cheap; copying the whole window is only worth it on Assignments.
-                if (device.showsAssignments()) device.teamsSnapshot() else null
+                onAssignments = device.showsAssignments()
+                if (onAssignments) device.teamsSnapshot() else null
             } catch (e: Exception) {
-                // Teams' tree can change under the copy; the next change brings another look.
                 Log.w(SyncLog.TAG, "Couldn't read Teams", e)
                 null
             }
         }
         if (isBusy) return
         if (root == null) {
-            elsewhereAt = now
-            observer.reset()
+            // Assignments whose tree couldn't be copied (changing underneath, say) is tried again
+            // shortly; anywhere else, what was seen of Assignments no longer holds.
+            if (onAssignments) {
+                pacer.looked(LookPacer.Outcome.Failed, now)
+            } else {
+                pacer.looked(LookPacer.Outcome.Elsewhere, now)
+                observer.reset()
+            }
             return
         }
-        elsewhereAt = null
+        pacer.looked(LookPacer.Outcome.Read, now)
         val sighting = observer.look(root, SystemClock.elapsedRealtime(), System.currentTimeMillis(), store.state.value.assignments)
             ?: return
-        val handedInLately = recentlyHandedIn()
         var changes = emptyList<String>()
-        store.applyObserved { saved ->
+        store.applyObserved { saved, handedInLately ->
             val merged = TeamsObserver.merge(
                 sighting, saved, DueDateParser(Clock.systemDefaultZone()), System.currentTimeMillis(), handedInLately,
             )
             changes = merged.changes
-            noteHandedIn(merged.handedIn)
-            merged.assignments
+            AssignmentStore.Observed(merged.assignments, merged.handedIn)
         }
         if (changes.isEmpty()) return
         changes.forEach { log.add("Seen in Teams: $it") }
@@ -393,19 +404,8 @@ class TeamsAutomationService : AccessibilityService() {
     private fun stopWatching() {
         watching?.cancel()
         watching = null
-        elsewhereAt = null
+        pacer.reset()
         observer.reset()
-    }
-
-    private fun noteHandedIn(keys: List<String>) {
-        val now = SystemClock.elapsedRealtime()
-        keys.forEach { recentlyHandedIn[it] = now }
-    }
-
-    private fun recentlyHandedIn(): Set<String> {
-        val now = SystemClock.elapsedRealtime()
-        recentlyHandedIn.values.removeAll { now - it > HANDED_IN_MEMORY_MS }
-        return recentlyHandedIn.keys.toSet()
     }
 
     companion object {
@@ -414,12 +414,6 @@ class TeamsAutomationService : AccessibilityService() {
 
         /** Between looks while Teams keeps changing; longer than [TeamsObserver]'s settle time. */
         private const val LOOK_INTERVAL_MS = 700L
-
-        /** How often to check whether Teams is on Assignments while it stays on another screen. */
-        private const val ELSEWHERE_RECHECK_MS = 5_000L
-
-        /** How long work handed in isn't added back from a list that still shows it as open. */
-        private const val HANDED_IN_MEMORY_MS = 12 * 60 * 60_000L
 
         @Volatile
         var instance: TeamsAutomationService? = null

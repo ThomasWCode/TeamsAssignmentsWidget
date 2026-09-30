@@ -371,11 +371,13 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             val className = detail.className?.takeIf { sighting.classInToolbar }
             val dueAt = detail.dueText?.let(parser::parseDetail)?.toEpochMilli()
 
-            // The detail screen has no GUID, so it is matched on its title, then its class, then its due time.
+            // The detail screen has no GUID, so it is matched on its title, class and due time. A
+            // known due time must agree even for a lone candidate: weekly work repeats its title and
+            // class, and a due date that really changed shows on the list, where cards have GUIDs.
             val sameTitle = saved.filter { it.title.normalizedTitle() == title.normalizedTitle() }
             val match = sameTitle
                 .filter { className == null || it.className.isEmpty() || classMatches(it.className, className) }
-                .let { found -> if (found.size > 1 && dueAt != null) found.filter { it.dueAt == dueAt } else found }
+                .filter { dueAt == null || it.dueAt == null || it.dueAt == dueAt }
                 .singleOrNull()
 
             if (match == null) {

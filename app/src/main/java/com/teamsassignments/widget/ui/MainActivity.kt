@@ -320,7 +320,7 @@ private fun TroubleshootingCard(connected: Boolean, running: Boolean, latestDump
         Text(
             "If syncing breaks after a Teams update, capture the screen it gets stuck on and share the file. " +
                 "A sync that fails by itself (rather than being cancelled) also saves a capture, " +
-                "as does a hand-in that Teams doesn't confirm.",
+                "as does a hand-in that meets an unexpected screen or that Teams doesn't confirm.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

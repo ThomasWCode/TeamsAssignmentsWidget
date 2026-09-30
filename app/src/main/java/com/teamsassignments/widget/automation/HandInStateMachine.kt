@@ -1,5 +1,6 @@
 package com.teamsassignments.widget.automation
 
+import com.teamsassignments.widget.automation.TeamsScreens.normalizedTitle
 import com.teamsassignments.widget.data.Assignment
 
 /** How a hand-in ended. Only [HandedIn] and [Unconfirmed] mean Hand in was pressed. */
@@ -19,6 +20,12 @@ enum class HandInResult {
      */
     NotListed,
 
+    /**
+     * The screen that opened wasn't exactly the chosen assignment's, going by its title (a
+     * same-named one, say, whose title only starts the chosen one's). Nothing was pressed.
+     */
+    Mismatch,
+
     /** Its screen had no Hand in button that could be pressed. Nothing was pressed. */
     NoButton,
 
@@ -29,7 +36,8 @@ enum class HandInResult {
 /**
  * The hand-in workflow, run only after the user confirms on the widget:
  * 1. open the assignment the way a row tap does, by its GUID (see [NavigateStateMachine]);
- * 2. check that Teams still shows it as not handed in, with a Hand in button that can be pressed;
+ * 2. check that the screen is exactly the chosen assignment's, still not handed in, with a Hand
+ *    in button that can be pressed;
  * 3. press that button with its click action. It is a native button in Teams' toolbar, which
  *    takes click actions the way TalkBack presses it; only the WebView content ignores them;
  * 4. wait for Teams to show the work as handed in.
@@ -46,11 +54,15 @@ class HandInStateMachine(
     now: () -> Long,
     log: (String) -> Unit = {},
     isCancelled: () -> Boolean = { false },
-    /** Called just before Hand in is pressed. From then on the run can't be called off. */
-    private val onPressing: suspend () -> Unit = {},
+    /**
+     * Called just before Hand in is pressed, where the user can cancel: false if they already
+     * have, and then nothing is pressed. After true, the run can't be called off.
+     */
+    private val onPressing: suspend () -> Boolean = { true },
 ) : TeamsAutomation(device, config, now, log, isCancelled) {
 
-    private val navigate = NavigateStateMachine(device, now = now, log = log, isCancelled = isCancelled)
+    // The hand-in's own timings, so a slow Teams gets the same allowance while it's being found.
+    private val navigate = NavigateStateMachine(device, config, now, log, isCancelled)
 
     /** [saved] is the whole saved list, which sets how long an empty tab must stay empty (see [NavigateStateMachine.run]). */
     suspend fun run(target: Assignment, saved: List<Assignment> = emptyList()): HandInResult {
@@ -71,6 +83,13 @@ class HandInStateMachine(
             return HandInResult.NotFound
         }
         val title = detail.title.orEmpty()
+        // Opening a card lets its title through on a prefix, as a collapsed card's is cut short. Hand
+        // in goes only on a screen whose title is exactly the chosen assignment's: as the list
+        // showed it, or as saved. A tap that opened a same-named assignment must not count.
+        if (listOfNotNull(navigate.listedTitle, target.title).none { exactTitle(it, title) }) {
+            log("\"$title\" isn't exactly \"${navigate.listedTitle ?: target.title}\", so it isn't handed in")
+            return HandInResult.Mismatch
+        }
         if (detail.isHandedIn || TeamsScreens.offersUndoHandIn(root)) {
             log("\"$title\" is already handed in")
             return HandInResult.AlreadyHandedIn
@@ -81,7 +100,8 @@ class HandInStateMachine(
         }
 
         log("Pressing Hand in on \"$title\"")
-        onPressing()
+        // The last chance to cancel: checked where the Cancel button lives, as it is taken away.
+        if (!onPressing()) throw SyncAbort(SyncAbort.CANCELLED)
         if (!pressHandIn(button)) {
             // The click didn't go through, so nothing happened: try once more on a fresh copy of the
             // screen, in case Teams redrew its toolbar, as long as it still offers Hand in.
@@ -123,8 +143,10 @@ class HandInStateMachine(
     /** Whether [root] still shows the assignment titled [title] as not handed in. */
     private fun stillOpen(root: UiNode, title: String): Boolean {
         val detail = TeamsScreens.detail(root) ?: return false
-        return TeamsScreens.sameTitle(detail.title, title) && !detail.isHandedIn && !TeamsScreens.offersUndoHandIn(root)
+        return detail.title?.let { exactTitle(it, title) } == true && !detail.isHandedIn && !TeamsScreens.offersUndoHandIn(root)
     }
+
+    private fun exactTitle(a: String, b: String) = a.normalizedTitle() == b.normalizedTitle()
 
     /**
      * Waits for Teams to show the work as handed in: its status says so, or its toolbar offers to
@@ -133,7 +155,7 @@ class HandInStateMachine(
     private suspend fun awaitHandedIn(title: String): Boolean = try {
         awaitScreen("Teams to show it handed in", config.handInConfirmTimeoutMs) { root ->
             val detail = TeamsScreens.detail(root)
-            val sameAssignment = detail?.title == null || TeamsScreens.sameTitle(detail.title, title)
+            val sameAssignment = detail?.title?.let { exactTitle(it, title) } ?: true
             val handedIn = detail?.isHandedIn == true || TeamsScreens.offersUndoHandIn(root)
             true.takeIf { handedIn && sameAssignment }
         }
