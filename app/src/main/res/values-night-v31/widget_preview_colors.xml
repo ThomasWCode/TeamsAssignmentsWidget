@@ -7,4 +7,6 @@
     <color name="widget_preview_primary">@android:color/system_accent1_200</color>
     <color name="widget_preview_pill">@android:color/system_accent1_700</color>
     <color name="widget_preview_on_pill">@android:color/system_accent1_100</color>
+    <color name="widget_preview_hand_in">@android:color/system_accent2_700</color>
+    <color name="widget_preview_on_hand_in">@android:color/system_accent2_100</color>
 </resources>

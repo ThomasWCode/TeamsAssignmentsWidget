@@ -11,6 +11,7 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -30,6 +31,26 @@ class NavigateStateMachineTest {
         assertTrue(navigate(device).run(target))
         assertEquals(Screen.Detail(target.key, Tab.Forthcoming), device.screen)
         assertFalse(Tab.PastDue.viewId in device.pressed)
+    }
+
+    @Test
+    fun `remembers the title the list showed, unless the card was collapsed`() = runTest {
+        val target = assignment("4c958b24-de6c-429b-846b-1d02d0cbed0b", "Physics test (old name)", AssignmentTab.Forthcoming)
+        val machine = navigate(FakeTeamsDevice())
+        assertTrue(machine.run(target))
+        assertEquals("Particle Physics Test", machine.listedTitle)
+
+        // After a visit its card collapses into one node, whose title is cut out of its text.
+        val collapsed = FakeTeamsDevice(
+            lists = mapOf(
+                Tab.Forthcoming to "list_forthcoming_after_back",
+                Tab.PastDue to "list_past_due",
+                Tab.Completed to "list_completed",
+            ),
+        )
+        val again = navigate(collapsed)
+        assertTrue(again.run(target))
+        assertNull(again.listedTitle)
     }
 
     @Test
@@ -56,9 +77,85 @@ class NavigateStateMachineTest {
         val device = FakeTeamsDevice()
         val target = assignment("00000000-0000-0000-0000-000000000000", "Handed in yesterday", AssignmentTab.Forthcoming)
 
-        assertFalse(navigate(device).run(target))
+        val machine = navigate(device)
+        assertFalse(machine.run(target))
         assertIs<Screen.List>(device.screen)
         assertTrue(device.opened.isEmpty())
+        // Both open tabs were read in full, and neither lists it.
+        assertTrue(machine.notListed)
+    }
+
+    private val gone = assignment("00000000-0000-0000-0000-000000000000", "Handed in yesterday", AssignmentTab.Forthcoming)
+
+    @Test
+    fun `doesn't take it as gone when a list isn't whole in the tree`() = runTest {
+        // Derived: a virtualised Forthcoming list only holds the rows in view.
+        val device = FakeTeamsDevice(
+            lists = mapOf(
+                Tab.Forthcoming to "list_forthcoming_virtualised",
+                Tab.PastDue to "list_past_due",
+                Tab.Completed to "list_completed",
+            ),
+        )
+        val machine = navigate(device)
+        assertFalse(machine.run(gone))
+        assertFalse(machine.notListed)
+    }
+
+    @Test
+    fun `doesn't take it as gone when both tabs showed the same cards`() = runTest {
+        // Codex review: Past due flashing a spinner, then showing Forthcoming's rows again, passes
+        // as Past due's own list, since the list changed on the way. Two identical tabs prove nothing.
+        val device = FakeTeamsDevice(
+            lists = mapOf(
+                Tab.Forthcoming to "list_forthcoming",
+                Tab.PastDue to "list_past_due_stale_rows",
+                Tab.Completed to "list_completed",
+            ),
+            now = { testScheduler.currentTime },
+        ).apply { slowTabs[Tab.PastDue] = "list_past_due_loading" to 1_000L }
+        val machine = navigate(device)
+        assertFalse(machine.run(gone))
+        assertFalse(machine.notListed)
+    }
+
+    @Test
+    fun `doesn't take it as gone while it falls due`() = runTest {
+        // It may be moving from Forthcoming to Past due as the tabs are read.
+        val now = 1_790_000_000_000L
+        val machine = NavigateStateMachine(FakeTeamsDevice(), now = { testScheduler.currentTime }, wallClock = { now })
+        assertFalse(machine.run(gone.copy(dueAt = now + 60_000)))
+        assertFalse(machine.notListed)
+    }
+
+    @Test
+    fun `a card that's listed but won't open isn't taken as gone`() = runTest {
+        val id = "4c958b24-de6c-429b-846b-1d02d0cbed0b"
+        val device = FakeTeamsDevice().apply { detailOverrides[id] = "detail_unreadable" }
+        val machine = navigate(device)
+        assertFalse(machine.run(assignment(id, "Particle Physics Test", AssignmentTab.Forthcoming)))
+        assertFalse(machine.notListed)
+    }
+
+    @Test
+    fun `an empty tab that had work must stay empty for longer, as in a sync`() = runTest {
+        fun device() = FakeTeamsDevice(
+            lists = mapOf(
+                Tab.Forthcoming to "list_forthcoming",
+                Tab.PastDue to "list_past_due_empty",
+                Tab.Completed to "list_completed",
+            ),
+        )
+        val start = testScheduler.currentTime
+        assertFalse(navigate(device()).run(gone))
+        val quick = testScheduler.currentTime - start
+
+        val hadWork = listOf(gone.copy(key = "d3f67007-3eb3-409e-840f-d8602b70ba8f", tab = AssignmentTab.PastDue))
+        val machine = navigate(device())
+        val second = testScheduler.currentTime
+        assertFalse(machine.run(gone, hadWork))
+        assertTrue(testScheduler.currentTime - second - quick >= 4_000, "waited ${testScheduler.currentTime - second} vs $quick")
+        assertTrue(machine.notListed)
     }
 
     @Test

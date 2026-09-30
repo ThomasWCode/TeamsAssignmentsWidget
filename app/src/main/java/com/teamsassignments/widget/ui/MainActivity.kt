@@ -101,8 +101,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** Material You where available; also used by the widget's hand-in confirmation. */
 @Composable
-private fun AppTheme(content: @Composable () -> Unit) {
+internal fun AppTheme(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val dark = isSystemInDarkTheme()
     val colors = when {
@@ -198,7 +199,8 @@ private fun SetupCard(checks: SetupChecks, connected: Boolean) {
             done = checks.serviceEnabled && connected,
             title = if (checks.serviceEnabled && !connected) "Sync service starting…" else "Turn on Teams Assignments sync",
             body = "In Accessibility settings, open Installed apps → Teams Assignments sync and switch it on. " +
-                "It only reads Teams, only when you sync, and never hands anything in.\n\n" +
+                "It reads Teams when you sync or have Assignments open, and only hands work in when you " +
+                "tap Hand in on the widget and confirm.\n\n" +
                 "Switch greyed out? Open App info → ⋮ → Allow restricted settings, then try again.",
         ) {
             Button(onClick = { openServiceSettings(context) }) { Text("Accessibility settings") }
@@ -235,7 +237,8 @@ private fun SyncCard(state: WidgetState, connected: Boolean, running: Boolean) {
         }
         Text(
             "Syncing opens Teams for a few seconds and reads any new or changed assignments. " +
-                "Full resync rereads every assignment's instructions.",
+                "Full resync rereads every assignment's instructions. " +
+                "Looking through Assignments in Teams yourself also updates the list.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -316,7 +319,8 @@ private fun TroubleshootingCard(connected: Boolean, running: Boolean, latestDump
     SectionCard("Troubleshooting") {
         Text(
             "If syncing breaks after a Teams update, capture the screen it gets stuck on and share the file. " +
-                "A sync that fails by itself (rather than being cancelled) also saves a capture.",
+                "A sync that fails by itself (rather than being cancelled) also saves a capture, " +
+                "as does a hand-in that meets an unexpected screen or that Teams doesn't confirm.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

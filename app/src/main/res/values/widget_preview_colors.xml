@@ -8,4 +8,6 @@
     <color name="widget_preview_primary">#FF4F52B2</color>
     <color name="widget_preview_pill">#FFDFE0FF</color>
     <color name="widget_preview_on_pill">#FF0B0D6B</color>
+    <color name="widget_preview_hand_in">#FFE8DEF8</color>
+    <color name="widget_preview_on_hand_in">#FF1D192B</color>
 </resources>

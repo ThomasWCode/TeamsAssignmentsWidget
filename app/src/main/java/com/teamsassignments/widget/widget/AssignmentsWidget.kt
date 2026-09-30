@@ -58,6 +58,7 @@ import com.teamsassignments.widget.data.DueFormatter
 import com.teamsassignments.widget.data.SyncStatus
 import com.teamsassignments.widget.data.WidgetState
 import com.teamsassignments.widget.data.groupIntoSections
+import com.teamsassignments.widget.ui.HandInActivity
 import com.teamsassignments.widget.ui.MainActivity
 import com.teamsassignments.widget.ui.OpenAssignmentActivity
 import com.teamsassignments.widget.ui.RefreshActivity
@@ -65,7 +66,7 @@ import java.time.Clock
 
 /**
  * The home-screen widget: the Teams assignments that haven't been handed in, grouped by due date,
- * with a ↻ pill that syncs and rows that open the assignment in Teams.
+ * with a ↻ pill that syncs, rows that open the assignment in Teams, and a Hand in button on each.
  *
  * It only draws what [AssignmentStore] holds. Syncing is always manual (the ↻ pill); the widget
  * just redraws itself at midnight and as deadlines pass so "Today" and "Overdue" stay true.
@@ -177,6 +178,8 @@ private fun AssignmentList(state: WidgetState) {
     val formatter = DueFormatter(clock, context.resources.configuration.locales[0], DateFormat.is24HourFormat(context))
     // Too short for previews: keep each row to its title and due line.
     val showDescriptions = LocalSize.current.height >= 220.dp
+    // Too narrow for the Hand in label as well as the title: show its icon instead.
+    val compactHandIn = LocalSize.current.width < 250.dp
 
     LazyColumn(GlanceModifier.fillMaxSize()) {
         sections.forEachIndexed { index, section ->
@@ -189,6 +192,7 @@ private fun AssignmentList(state: WidgetState) {
                     due = formatter.rowDue(assignment, section.bucket),
                     stripe = Color(ClassColors.colorFor(assignment.className, state.classColors)),
                     showDescription = showDescriptions,
+                    compactHandIn = compactHandIn,
                 )
             }
         }
@@ -208,9 +212,12 @@ private fun SectionHeader(title: String, overdue: Boolean) {
     )
 }
 
-/** A rounded card with the class-colour stripe; tapping it opens the assignment in Teams. */
+/**
+ * A rounded card with the class-colour stripe; tapping it opens the assignment in Teams, and its
+ * Hand in button hands it in (after asking).
+ */
 @Composable
-private fun AssignmentRow(assignment: Assignment, due: String, stripe: Color, showDescription: Boolean) {
+private fun AssignmentRow(assignment: Assignment, due: String, stripe: Color, showDescription: Boolean, compactHandIn: Boolean) {
     val context = LocalContext.current
     Column(GlanceModifier.fillMaxWidth().padding(bottom = 6.dp)) {
         Row(
@@ -219,6 +226,7 @@ private fun AssignmentRow(assignment: Assignment, due: String, stripe: Color, sh
                 .cornerRadius(14.dp)
                 .background(GlanceTheme.colors.surface)
                 .clickable(actionStartActivity(OpenAssignmentActivity.intent(context, assignment.key))),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(GlanceModifier.width(5.dp).fillMaxHeight().background(ColorProvider(stripe))) {}
             Column(GlanceModifier.defaultWeight().padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 8.dp)) {
@@ -240,6 +248,40 @@ private fun AssignmentRow(assignment: Assignment, due: String, stripe: Color, sh
                     )
                 }
             }
+            HandInPill(assignment.key, compactHandIn)
+            Spacer(GlanceModifier.width(8.dp))
+        }
+    }
+}
+
+/** A row's tonal Hand in button. It opens a confirmation before anything is handed in. */
+@Composable
+private fun HandInPill(key: String, compact: Boolean) {
+    val context = LocalContext.current
+    val pill = GlanceModifier
+        .cornerRadius(16.dp)
+        .background(GlanceTheme.colors.secondaryContainer)
+        .clickable(actionStartActivity(HandInActivity.intent(context, key)))
+    if (compact) {
+        Box(pill.size(width = 36.dp, height = 32.dp), contentAlignment = Alignment.Center) {
+            Image(
+                provider = ImageProvider(R.drawable.ic_hand_in),
+                contentDescription = "Hand in",
+                modifier = GlanceModifier.size(18.dp),
+                colorFilter = ColorFilter.tint(GlanceTheme.colors.onSecondaryContainer),
+            )
+        }
+    } else {
+        Box(pill.padding(horizontal = 12.dp, vertical = 7.dp), contentAlignment = Alignment.Center) {
+            Text(
+                "Hand in",
+                style = TextStyle(
+                    color = GlanceTheme.colors.onSecondaryContainer,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
+                maxLines = 1,
+            )
         }
     }
 }

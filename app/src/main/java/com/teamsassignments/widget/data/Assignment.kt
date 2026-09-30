@@ -68,4 +68,10 @@ data class WidgetState(
     val status: SyncStatus = SyncStatus.Idle,
     /** Class name → index into [ClassColors.PALETTE], kept so colours survive re-syncs. */
     val classColors: Map<String, Int> = emptyMap(),
+    /**
+     * Assignments handed in lately: key → when, in epoch milliseconds. A list Teams hasn't
+     * refreshed may still show them as open, so reading along doesn't add them back (see
+     * [AssignmentStore.recentlyHandedIn]). Kept here so a restart doesn't forget them.
+     */
+    val handedIn: Map<String, Long> = emptyMap(),
 )

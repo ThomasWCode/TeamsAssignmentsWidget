@@ -60,6 +60,14 @@ object TeamsScreens {
         it.className.endsWith("ProgressBar") || TeamsSelectors.LOADING_LABEL.matches(it.label.squash())
     }
 
+    /**
+     * [isLoading], counting only indicators on screen. The Completed list keeps a "load more"
+     * placeholder (a `ProgressBar`) off screen below its last card for as long as it's open.
+     */
+    fun isLoadingOnScreen(root: UiNode): Boolean = root.walk().any {
+        !it.bounds.isEmpty && (it.className.endsWith("ProgressBar") || TeamsSelectors.LOADING_LABEL.matches(it.label.squash()))
+    }
+
     /** Every card in the tree, in list order, with the group header each sits under. */
     fun cards(root: UiNode): List<ListCard> {
         val cards = mutableListOf<ListCard>()
@@ -87,6 +95,42 @@ object TeamsScreens {
         visit(root)
         return cards
     }
+
+    /** Which ends of the selected tab's list are on screen, going by the bounds of the list itself. */
+    data class ListInView(val top: Boolean, val bottom: Boolean)
+
+    fun listInView(root: UiNode): ListInView? {
+        val list = listNode(root) ?: return null
+        val view = viewport(root)
+        return ListInView(top = list.bounds.top > view.top, bottom = list.bounds.bottom < view.bottom)
+    }
+
+    /**
+     * Whether the tree holds the whole of the selected tab's list, so that one look sees every
+     * card: at each end the list runs off screen, the rows beyond it are in the tree. Teams keeps
+     * every row there, reporting those out of view with zero height at the edge they're past (at
+     * the top once scrolled past, at the bottom until reached), so this holds scrolled or not. A
+     * list that only held the rows in view, as a virtualised one would, has to be scrolled through.
+     */
+    fun wholeListInTree(root: UiNode): Boolean {
+        val list = listNode(root) ?: return false
+        val view = viewport(root)
+        val ends = listInView(root) ?: return false
+        // The list's own rows (date groups, the Past due footer) and its cards.
+        val rows = list.children + list.walk().filter { TeamsSelectors.CARD_ID.matches(it.viewId) }
+        val top = ends.top || rows.any { it.bounds.isEmpty && it.bounds.bottom <= view.top }
+        val bottom = ends.bottom || rows.any { it.bounds.isEmpty && it.bounds.top >= view.bottom }
+        return top && bottom
+    }
+
+    /** The list holding the cards; with no cards to go by, the first list on the page. */
+    private fun listNode(root: UiNode): UiNode? {
+        val lists = root.walk().filter { it.className.endsWith(TeamsSelectors.LIST_CLASS) }
+        return lists.firstOrNull { list -> list.walk().any { TeamsSelectors.CARD_ID.matches(it.viewId) } } ?: lists.firstOrNull()
+    }
+
+    /** The part of the page on screen: its scrolling area, the WebView. */
+    private fun viewport(root: UiNode): IntRect = (root.walk().firstOrNull { it.isScrollable } ?: root).bounds
 
     fun findCard(root: UiNode, id: String): UiNode? =
         root.walk().firstOrNull { it.viewId == id && TeamsSelectors.CARD_ID.matches(it.viewId) }
@@ -174,6 +218,38 @@ object TeamsScreens {
             instructions = instructions(tokens, from = headerEnd + 1),
         )
     }
+
+    /**
+     * Whether the toolbar title is the class name, as on a detail screen opened from the
+     * Assignments list: the subtitle under it reads `Assignments`.
+     */
+    fun classInToolbar(root: UiNode): Boolean =
+        root.findById(TeamsSelectors.TOOLBAR_SUBTITLE)?.text?.squash() == TeamsSelectors.ASSIGNMENTS_TITLE
+
+    /**
+     * The detail screen's Hand in button: a native button in Teams' toolbar reading exactly
+     * `HAND IN` or `HAND IN LATE`. Null on any other screen, and once the work is handed in.
+     */
+    fun handInButton(root: UiNode): UiNode? = toolbarButton(root, TeamsSelectors.HAND_IN_BUTTON)
+
+    /** Whether the toolbar offers to undo a hand-in, as it should once the work is handed in. */
+    fun offersUndoHandIn(root: UiNode): Boolean = toolbarButton(root, TeamsSelectors.UNDO_HAND_IN_BUTTON) != null
+
+    private fun toolbarButton(root: UiNode, pattern: Regex): UiNode? =
+        root.findById(TeamsSelectors.TOOLBAR)?.walk()?.firstOrNull {
+            it.className.endsWith("Button") && pattern.matches(it.label.squash())
+        }
+
+    /** Whether a title read from the screen is [expected]'s, ignoring case and spacing. */
+    fun sameTitle(actual: String?, expected: String): Boolean {
+        val a = actual?.normalizedTitle() ?: return false
+        val e = expected.normalizedTitle()
+        // A collapsed card's title is parsed from concatenated text, so allow a prefix match.
+        return a == e || e.startsWith(a)
+    }
+
+    /** A title as [sameTitle] compares it. */
+    fun String.normalizedTitle() = lowercase().replace(Regex("\\s+"), " ").trim()
 
     /** A piece of text on screen and where it sits, used to tell paragraphs from inline spans. */
     private data class Token(val text: String, val bounds: IntRect)

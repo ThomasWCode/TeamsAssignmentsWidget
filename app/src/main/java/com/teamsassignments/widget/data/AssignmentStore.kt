@@ -63,6 +63,50 @@ class AssignmentStore(
         )
     }
 
+    /**
+     * Drops an assignment that has just been handed in, or is taken as handed in. A real hand-in is
+     * [remembered] (see [recentlyHandedIn]); one only presumed isn't, so that a list still showing
+     * it can bring it back. The sync time and status are kept.
+     */
+    suspend fun markHandedIn(key: String, remembered: Boolean = true) = update { state ->
+        val now = clock.millis()
+        state.copy(
+            assignments = state.assignments.filterNot { it.key == key },
+            handedIn = recent(state.handedIn, now) + if (remembered) mapOf(key to now) else emptyMap(),
+        )
+    }
+
+    /** The keys handed in over the last [HANDED_IN_MEMORY_MS] (see [WidgetState.handedIn]). */
+    fun recentlyHandedIn(): Set<String> = recent(state.value.handedIn, clock.millis()).keys
+
+    /** What reading along made of the list, and the keys it saw handed in, to remember. */
+    data class Observed(val assignments: List<Assignment>, val handedIn: Collection<String> = emptyList())
+
+    /**
+     * Applies what was seen in Teams outside a sync (see TeamsObserver). [transform] gets the list
+     * and the keys handed in lately. A running sync owns the list, so nothing changes while one is;
+     * the sync time and status are kept either way. Keys newly seen handed in are remembered even
+     * when the list is unchanged; those already remembered keep their time.
+     */
+    suspend fun applyObserved(transform: (List<Assignment>, Set<String>) -> Observed) = update { state ->
+        if (state.status is SyncStatus.Running) return@update state
+        val now = clock.millis()
+        val lately = recent(state.handedIn, now)
+        val observed = transform(state.assignments, lately.keys)
+        val newlyHandedIn = observed.handedIn.filterNot { it in lately }
+        if (observed.assignments == state.assignments && newlyHandedIn.isEmpty()) {
+            state
+        } else {
+            state.copy(
+                assignments = observed.assignments,
+                classColors = ClassColors.assign(state.classColors, observed.assignments.map { it.className }),
+                handedIn = lately + newlyHandedIn.associateWith { now },
+            )
+        }
+    }
+
+    private fun recent(handedIn: Map<String, Long>, now: Long) = handedIn.filterValues { now - it in 0 until HANDED_IN_MEMORY_MS }
+
     private fun load(): WidgetState {
         val loaded = runCatching {
             if (file.exists()) json.decodeFromString<WidgetState>(file.readText()) else null
@@ -90,6 +134,9 @@ class AssignmentStore(
     companion object {
         const val FILE_NAME = "widget_state.json"
         const val INTERRUPTED = "Sync was interrupted"
+
+        /** How long work handed in isn't added back from a list that still shows it as open. */
+        const val HANDED_IN_MEMORY_MS = 12 * 60 * 60_000L
 
         private val json = Json {
             ignoreUnknownKeys = true
