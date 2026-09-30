@@ -177,6 +177,25 @@ class AssignmentStoreTest {
     }
 
     @Test
+    fun `remembers work newly seen handed in, even with the list unchanged`() = runTest {
+        // Codex review: work already off the list (taken as handed in, say), then seen on Completed.
+        val time = SettableClock(clock.instant())
+        val store = AssignmentStore(file, time)
+        store.saveSuccess(listOf(physics))
+        suspend fun seenDone() = store.applyObserved { saved, _ ->
+            AssignmentStore.Observed(saved, handedIn = listOf(hausaufgabe.key))
+        }
+        seenDone()
+        assertEquals(listOf(physics), store.state.value.assignments)
+        assertEquals(setOf(hausaufgabe.key), AssignmentStore(file, time).recentlyHandedIn())
+        // Seen again, it keeps its first time, so it still goes 12 hours after that.
+        time.now = time.now.plusSeconds(6 * 3_600L)
+        seenDone()
+        time.now = time.now.plusSeconds(6 * 3_600L)
+        assertEquals(emptySet(), store.recentlyHandedIn())
+    }
+
+    @Test
     fun `work only taken as handed in isn't remembered`() = runTest {
         val store = AssignmentStore(file, clock)
         store.saveSuccess(listOf(physics, hausaufgabe))

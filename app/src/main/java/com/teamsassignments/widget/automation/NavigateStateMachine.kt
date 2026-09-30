@@ -28,7 +28,8 @@ class NavigateStateMachine(
      * sync's standard (see [awaitSettledList]) and whole in the tree
      * ([TeamsScreens.wholeListInTree]): a list that isn't never counts, since this doesn't scroll
      * right through it. Work falling due around the search may just have moved between the tabs,
-     * so it never counts as missing either.
+     * so it never counts as missing either, and nor does anything when both tabs showed the very
+     * same cards (one tab's rows, still showing after the switch).
      */
     var notListed = false
         private set
@@ -55,7 +56,8 @@ class NavigateStateMachine(
         val first = TeamsSelectors.tabFor(target.tab)
         val tabs = listOf(first) + TeamsSelectors.OPEN_TABS.filter { it != first }
         var previousTab = emptyList<ListCard>()
-        val missingFrom = mutableSetOf<Tab>()
+        // Each tab read in full without the target, and the cards it showed.
+        val missingFrom = mutableMapOf<Tab, Set<String>>()
         for (tab in tabs) {
             val hadWork = saved.any { it.tab == tab.toAssignmentTab() }
             val cards = try {
@@ -64,7 +66,7 @@ class NavigateStateMachine(
                 continue
             }
             previousTab = cards
-            if (hasGuid && cards.none { it.id == target.key } && readInFull(cards)) missingFrom += tab
+            if (hasGuid && cards.none { it.id == target.key } && readInFull(cards)) missingFrom[tab] = cards.map { it.id }.toSet()
             val id = if (hasGuid) {
                 target.key
             } else {
@@ -88,7 +90,10 @@ class NavigateStateMachine(
         val dueDuringSearch = target.dueAt?.let {
             it in (searchStart - config.movedTabsBeforeMs)..(wallClock() + config.movedTabsAfterMs)
         } == true
-        notListed = missingFrom.containsAll(TeamsSelectors.OPEN_TABS) && !dueDuringSearch
+        // A spinner over the last tab's rows counts as the list changing, so rows that then stay put
+        // can pass as the new tab's; as in TeamsObserver.bothInFull, identical tabs prove nothing.
+        val sameCards = missingFrom.values.distinct().size == 1 && missingFrom.values.first().isNotEmpty()
+        notListed = missingFrom.keys.containsAll(TeamsSelectors.OPEN_TABS) && !dueDuringSearch && !sameCards
         log(if (notListed) "\"${target.title}\" is on neither Forthcoming nor Past due" else "Couldn't find \"${target.title}\"")
         return false
     }

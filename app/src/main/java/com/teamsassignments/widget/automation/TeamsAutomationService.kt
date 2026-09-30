@@ -123,7 +123,10 @@ class TeamsAutomationService : AccessibilityService() {
         cancelRequested = false
         dumper.disarm()
         stopWatching()
-        job = scope.launch { runSync(full, returnTo) }
+        job = scope.launch {
+            runSync(full, returnTo)
+            lookAfterwards()
+        }
         return true
     }
 
@@ -176,6 +179,7 @@ class TeamsAutomationService : AccessibilityService() {
             } else if (opened == false) {
                 Toast.makeText(this@TeamsAutomationService, "Couldn't find “${target.title}” in Teams", Toast.LENGTH_LONG).show()
             }
+            lookAfterwards()
         }
         return true
     }
@@ -190,7 +194,10 @@ class TeamsAutomationService : AccessibilityService() {
         cancelRequested = false
         dumper.disarm()
         stopWatching()
-        job = scope.launch { runHandIn(target) }
+        job = scope.launch {
+            runHandIn(target)
+            lookAfterwards()
+        }
         return true
     }
 
@@ -398,6 +405,15 @@ class TeamsAutomationService : AccessibilityService() {
         changes.forEach { log.add("Seen in Teams: $it") }
         log.persist()
         WidgetUpdater.update(this)
+    }
+
+    /**
+     * After a workflow: looks at wherever it left Teams, such as the assignment a row tap opened.
+     * Its events went to the workflow, and the user may just read the screen, prompting no more.
+     */
+    private fun lookAfterwards() {
+        teamsChanged = true
+        if (watching?.isActive != true) watching = scope.launch { watchTeams() }
     }
 
     /** Stops looking at Teams, for when a workflow is about to drive it. */

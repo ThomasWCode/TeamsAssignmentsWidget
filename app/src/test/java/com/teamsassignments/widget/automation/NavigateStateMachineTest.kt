@@ -103,6 +103,23 @@ class NavigateStateMachineTest {
     }
 
     @Test
+    fun `doesn't take it as gone when both tabs showed the same cards`() = runTest {
+        // Codex review: Past due flashing a spinner, then showing Forthcoming's rows again, passes
+        // as Past due's own list, since the list changed on the way. Two identical tabs prove nothing.
+        val device = FakeTeamsDevice(
+            lists = mapOf(
+                Tab.Forthcoming to "list_forthcoming",
+                Tab.PastDue to "list_past_due_stale_rows",
+                Tab.Completed to "list_completed",
+            ),
+            now = { testScheduler.currentTime },
+        ).apply { slowTabs[Tab.PastDue] = "list_past_due_loading" to 1_000L }
+        val machine = navigate(device)
+        assertFalse(machine.run(gone))
+        assertFalse(machine.notListed)
+    }
+
+    @Test
     fun `doesn't take it as gone while it falls due`() = runTest {
         // It may be moving from Forthcoming to Past due as the tabs are read.
         val now = 1_790_000_000_000L

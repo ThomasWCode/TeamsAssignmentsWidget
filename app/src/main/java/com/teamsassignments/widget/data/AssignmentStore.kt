@@ -85,19 +85,22 @@ class AssignmentStore(
     /**
      * Applies what was seen in Teams outside a sync (see TeamsObserver). [transform] gets the list
      * and the keys handed in lately. A running sync owns the list, so nothing changes while one is;
-     * the sync time and status are kept either way.
+     * the sync time and status are kept either way. Keys newly seen handed in are remembered even
+     * when the list is unchanged; those already remembered keep their time.
      */
     suspend fun applyObserved(transform: (List<Assignment>, Set<String>) -> Observed) = update { state ->
         if (state.status is SyncStatus.Running) return@update state
         val now = clock.millis()
-        val observed = transform(state.assignments, recent(state.handedIn, now).keys)
-        if (observed.assignments == state.assignments) {
+        val lately = recent(state.handedIn, now)
+        val observed = transform(state.assignments, lately.keys)
+        val newlyHandedIn = observed.handedIn.filterNot { it in lately }
+        if (observed.assignments == state.assignments && newlyHandedIn.isEmpty()) {
             state
         } else {
             state.copy(
                 assignments = observed.assignments,
                 classColors = ClassColors.assign(state.classColors, observed.assignments.map { it.className }),
-                handedIn = recent(state.handedIn, now) + observed.handedIn.associateWith { now },
+                handedIn = lately + newlyHandedIn.associateWith { now },
             )
         }
     }
