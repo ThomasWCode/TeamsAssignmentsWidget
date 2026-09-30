@@ -63,6 +63,28 @@ class AssignmentStore(
         )
     }
 
+    /** Drops an assignment that has just been handed in. The sync time and status are kept. */
+    suspend fun markHandedIn(key: String) = update { state ->
+        state.copy(assignments = state.assignments.filterNot { it.key == key })
+    }
+
+    /**
+     * Applies what was seen in Teams outside a sync (see TeamsObserver). A running sync owns the
+     * list, so nothing changes while one is; the sync time and status are kept either way.
+     */
+    suspend fun applyObserved(transform: (List<Assignment>) -> List<Assignment>) = update { state ->
+        if (state.status is SyncStatus.Running) return@update state
+        val assignments = transform(state.assignments)
+        if (assignments == state.assignments) {
+            state
+        } else {
+            state.copy(
+                assignments = assignments,
+                classColors = ClassColors.assign(state.classColors, assignments.map { it.className }),
+            )
+        }
+    }
+
     private fun load(): WidgetState {
         val loaded = runCatching {
             if (file.exists()) json.decodeFromString<WidgetState>(file.readText()) else null

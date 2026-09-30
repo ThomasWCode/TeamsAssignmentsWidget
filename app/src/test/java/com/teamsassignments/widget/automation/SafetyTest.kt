@@ -1,15 +1,20 @@
 package com.teamsassignments.widget.automation
 
+import com.teamsassignments.widget.data.DueDateParser
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
+import java.time.Clock
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** The automation must never press Hand in, Attach or anything else that changes Teams. */
+/**
+ * The automation must never press Attach or anything else that changes Teams, and Hand in only
+ * in the hand-in workflow, the user having asked for it.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SafetyTest {
 
@@ -63,5 +68,40 @@ class SafetyTest {
         // Off-screen cards have zero-height bounds, so there is nowhere safe to tap.
         val offScreen = TeamsScreens.findCard(list, "66fcdab0-2ed3-44b9-9ea3-3fba18d79567")!!
         assertNull(probe.safeTapPoint(list, offScreen))
+    }
+
+    @Test
+    fun `the hand-in check allows Teams' own Hand in button and nothing else`() {
+        val handIn = HandInStateMachine(FakeTeamsDevice(), now = { 0L })
+        handIn.requireHandInButton(load("detail_4c958b24").walk().single { it.text == "HAND IN" })
+        handIn.requireHandInButton(load("detail_88fafeb2").walk().single { it.text == "HAND IN LATE" })
+
+        val detail = load("detail_4c958b24")
+        val refused = listOf(
+            load("detail_4c958b24_handed_in").walk().single { it.text == "UNDO HAND IN" },
+            load("detail_4c958b24_hand_in_disabled").walk().single { it.text == "HAND IN" },
+            detail.walk().single { it.contentDescription == "Open Attach menu" },
+            detail.walk().single { it.contentDescription == "Open New menu" },
+            detail.walk().single { it.text == "Immersive Reader" },
+            detail.findById("overflow_menu_button")!!, // Back
+            // Hand in's words on anything but a button, such as a line of the instructions.
+            FakeNode(
+                className = "android.widget.TextView", text = "Hand in", contentDescription = "", viewId = "",
+                bounds = IntRect(0, 0, 100, 100), isClickable = true, isScrollable = false, isSelected = false,
+                children = emptyList(), onAction = { _, _ -> true },
+            ),
+        )
+        refused.forEach { node -> assertFailsWith<SyncAbort>(node.describe()) { handIn.requireHandInButton(node) } }
+        assertTrue(clicks.isEmpty())
+    }
+
+    @Test
+    fun `a sync never presses Hand in`() = runTest {
+        val device = FakeTeamsDevice()
+        SyncStateMachine(device, DueDateParser(Clock.systemUTC()), System::currentTimeMillis, now = { testScheduler.currentTime })
+            .run(emptyList())
+        assertTrue(device.opened.isNotEmpty())
+        assertTrue(device.pressed.none { "HAND IN" in it.uppercase() }, device.pressed.toString())
+        assertTrue(device.handedIn.isEmpty())
     }
 }

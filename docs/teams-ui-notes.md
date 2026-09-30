@@ -81,6 +81,8 @@ Relative labels seen:
 
 The Past due list ends with `To view older assignments, navigate to an individual class team.`
 
+The Completed list ends with a zero-height `ProgressBar` (`SHIMMER_GROUP`) below its last card, a placeholder for loading more. It is in the tree whenever the tab is open, so reading along only counts loading indicators that are on screen.
+
 ### Collapsed cards
 
 After you return from a detail screen, **the card you just visited collapses into a single leaf**. Its children disappear and the card node's own text becomes their concatenation:
@@ -98,7 +100,7 @@ Toolbar (native)
   ImageButton #overflow_menu_button cd='Back'
   TextView #action_bar_title_text       ← CLASS NAME
   TextView #action_bar_sub_title_text   ← "Assignments"
-  Button "HAND IN" / "HAND IN LATE"     ← NEVER CLICK
+  Button "HAND IN" / "HAND IN LATE"     ← only the hand-in workflow presses it
 WebView
   View #assignmentViewerVisibilityContainer   ← detail-screen marker
     TextView "Not handed in"                  ← status
@@ -142,9 +144,11 @@ Instructions are the nodes between `Instructions` and the first of `Reference ma
 
 ## Safety
 
-The automation only ever presses **tab nodes** (`tab-*`) and **assignment cards** (a GUID id), and never anything whose class is a `Button`.
-As a second guard, it refuses a tab whose label matches hand-in, turn-in, submit, attach, delete or similar.
+Syncing and opening an assignment only ever press **tab nodes** (`tab-*`) and **assignment cards** (a GUID id), and never anything whose class is a `Button`.
+As a second guard, they refuse a tab whose label matches hand-in, turn-in, submit, attach, delete or similar.
 The `HAND IN` / `HAND IN LATE` toolbar button and the `Open Attach menu` / `Open New menu` buttons are the dangerous controls on the detail screen.
+
+The one exception is the **hand-in workflow**, which runs only after the user confirms on the widget. It opens the assignment by its GUID (never by title), checks that the status isn't handed in, and presses the `Button` in the native `toolbar` whose text is exactly `HAND IN` or `HAND IN LATE`, and enabled. It uses the button's click action: it's a native view, which takes click actions the way TalkBack presses it, unlike the WebView content. It presses once, and a second time only if Teams reports that the first click didn't go through. It never presses `UNDO HAND IN` or anything else, and never taps the toolbar.
 
 Gesture taps (see below) have extra rules:
 
@@ -171,8 +175,10 @@ Not yet seen, and worth capturing with **Dump Teams screen** when they turn up:
 
 - An **empty** Forthcoming or Past due tab. For now an empty list is believed only after holding for 2 s (6 s if that tab had work at the last sync) with no loading indicator.
 - What Teams shows **while a tab loads** after a switch. (The whole module loading at launch is captured, above.) A spinner surfaces as a `ProgressBar` node, and an exact "Loading" label is also treated as loading.
+- The detail screen **after Hand in**. The hand-in workflow waits up to 20 s for the status to start `Handed in` (or `Turned in`/`Submitted`), or for the toolbar button to read `UNDO HAND IN`. Whether Teams first asks to confirm, or shows a celebration over the screen, is unknown; either would leave the hand-in reported as unconfirmed, with a failure capture saved.
+- A detail screen opened **from a Teams notification**, rather than from the list. Reading along only trusts its toolbar title as the class name while the subtitle reads `Assignments`.
 
-Some test fixtures are **derived** from the captures rather than captured: `list_past_due_with_moved_cards`, `list_past_due_stale_rows`, `list_past_due_empty`, `list_past_due_loading`, `list_forthcoming_single`, `list_past_due_single_moved` and `detail_unreadable`. Each builds a state that's hard to catch live (a card on both tabs, a tab selected before its rows load, an empty or loading list, a single card moving tabs, an unreadable detail screen) by editing a real capture. [`scripts/derive_fixtures.py`](../scripts/derive_fixtures.py) regenerates them after fresh captures.
+Some test fixtures are **derived** from the captures rather than captured: `list_past_due_with_moved_cards`, `list_past_due_stale_rows`, `list_past_due_empty`, `list_past_due_loading`, `list_forthcoming_single`, `list_past_due_single_moved`, `detail_unreadable`, `detail_4c958b24_handed_in`, `detail_88fafeb2_handed_in` and `detail_4c958b24_hand_in_disabled`. Each builds a state that's hard to catch live (a card on both tabs, a tab selected before its rows load, an empty or loading list, a single card moving tabs, an unreadable detail screen) or not yet seen (a handed-in detail screen, a greyed-out Hand in button) by editing a real capture. The handed-in ones are a guess at Teams' wording until a real one is captured. [`scripts/derive_fixtures.py`](../scripts/derive_fixtures.py) regenerates them after fresh captures.
 
 ## Consequences for the plan
 
@@ -181,3 +187,8 @@ Some test fixtures are **derived** from the captures rather than captured: `list
 3. **Row tap → open**: the service opens Assignments, selects the tab the assignment was last seen in (falling back to the other one), finds the card by GUID, scrolls it on screen and taps it. Matching by GUID replaces the plan's match on title and class.
 4. The due date is built from the date header + `Due at HH:MM` in the list, with the year inferred as the nearest date to now. The detail screen's due text is authoritative when it parses.
 5. The class name comes from the detail toolbar when available, otherwise from the card.
+
+Added later:
+
+6. **Hand in** presses the toolbar button described under Safety, then waits for the detail screen to show the work as handed in.
+7. **Reading along**: while nothing runs, a change in Teams prompts a look. A cheap check of the native toolbar (`action_bar_title_text` or `action_bar_sub_title_text` reading `Assignments`) decides whether to copy the window at all. A screen is used once it has held still for 600 ms, off screen loading placeholders aside. Lists add and update cards; a detail screen, matched to a saved assignment by title, then class, then due time, adds its instructions; anything shown as handed in is removed. Nothing is removed for being missing from a list.

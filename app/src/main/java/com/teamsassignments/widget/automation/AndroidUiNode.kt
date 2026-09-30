@@ -18,6 +18,7 @@ class AndroidUiNode private constructor(
     override val isClickable: Boolean,
     override val isScrollable: Boolean,
     override val isSelected: Boolean,
+    override val isEnabled: Boolean,
     override val children: List<AndroidUiNode>,
 ) : UiNode {
 
@@ -62,6 +63,7 @@ class AndroidUiNode private constructor(
                     isClickable = info.isClickable,
                     isScrollable = info.isScrollable,
                     isSelected = info.isSelected,
+                    isEnabled = info.isEnabled,
                     children = children,
                 )
             }

@@ -83,6 +83,15 @@ object TeamsSelectors {
     /** The native toolbar title: the class name on the detail screen, `Assignments` on the list. */
     const val TOOLBAR_TITLE = "action_bar_title_text"
 
+    /** The line under the toolbar title on the detail screen: `Assignments`. */
+    const val TOOLBAR_SUBTITLE = "action_bar_sub_title_text"
+
+    /** The native toolbar itself, which holds the detail screen's Hand in button. */
+    const val TOOLBAR = "toolbar"
+
+    /** The toolbar title on the list, and the subtitle on a detail screen. */
+    const val ASSIGNMENTS_TITLE = "Assignments"
+
     /**
      * The detail screen's due line. Every format Teams uses includes a time ("Due today at
      * 08:00", "Due 30 September 2026 08:30"), which keeps a title like "Due process essay" out.
@@ -94,6 +103,9 @@ object TeamsSelectors {
     )
     val DETAIL_HANDED_IN_STATUS = Regex("""^(Handed in|Turned in|Submitted)\b""", RegexOption.IGNORE_CASE)
 
+    /** Work that is plainly still open: the only status a detail screen on its own may add to the list. */
+    val DETAIL_NOT_HANDED_IN_STATUS = Regex("""^Not (handed|turned) in$""", RegexOption.IGNORE_CASE)
+
     const val INSTRUCTIONS_HEADING = "Instructions"
 
     /** Headings that end the instructions block. */
@@ -104,11 +116,23 @@ object TeamsSelectors {
     /** Numbered and bulleted list markers, which Teams renders as separate nodes. */
     val LIST_MARKER = Regex("""^(\d{1,3}[.)]|[a-zA-Z][.)]|[•·◦▪‣*-])$""")
 
+    // Handing in
+
+    /**
+     * The detail screen's toolbar button, `HAND IN` or `HAND IN LATE` (`TURN IN` in en-US). Only
+     * the hand-in workflow presses it, after the user confirms on the widget.
+     */
+    val HAND_IN_BUTTON = Regex("""^(hand|turn) ?in( late)?$""", RegexOption.IGNORE_CASE)
+
+    /** What that button is expected to read once the work is handed in. Never pressed. */
+    val UNDO_HAND_IN_BUTTON = Regex("""^undo (hand|turn) ?in$""", RegexOption.IGNORE_CASE)
+
     // Safety
 
     /**
      * Controls the automation must never activate. Clicks are already limited to tab nodes and
      * GUID cards; this is the second guard, checked against a tab's text and any node under a tap.
+     * The one exception, the Hand in button, has its own check in [HandInStateMachine].
      */
     val FORBIDDEN_CONTROL = Regex(
         """\b(hand\s*in|turn\s*in|undo|submit|attach|delete|remove|upload|send|new menu|add work)\b""",

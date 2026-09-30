@@ -5,6 +5,9 @@ rows load, an empty or loading list, a single card moving tabs, a detail screen 
 readable yet. Each is made here by
 editing a real capture, so the node shapes stay authentic.
 
+Others haven't been seen at all yet, and are a best guess until they are captured: a detail
+screen just after Hand in, and one whose Hand in button is disabled.
+
 Run from the repository root after replacing the captures:
 
     python scripts/derive_fixtures.py
@@ -108,9 +111,36 @@ def unreadable_detail():
     save(tree, "detail_unreadable")
 
 
+def hand_in_button(tree):
+    return next(
+        n for n in tree.getroot().iter("node")
+        if n.get("class") == "android.widget.Button" and n.get("text", "").startswith("HAND IN")
+    )
+
+
+def handed_in_details():
+    """Detail screens as Teams is expected to show them once handed in, not yet captured: the
+    status reads Handed in (or Handed in late), and the toolbar button Undo hand in."""
+    for guid, status in (("4c958b24", "Handed in"), ("88fafeb2", "Handed in late")):
+        tree = load(f"detail_{guid}")
+        container = by_id(tree, "assignmentViewerVisibilityContainer")
+        next(n for n in container.iter("node") if n.get("text") == "Not handed in").set("text", status)
+        hand_in_button(tree).set("text", "UNDO HAND IN")
+        save(tree, f"detail_{guid}_handed_in")
+
+
+def hand_in_disabled():
+    """A detail screen whose Hand in button is greyed out."""
+    tree = load("detail_4c958b24")
+    hand_in_button(tree).set("enabled", "false")
+    save(tree, "detail_4c958b24_hand_in_disabled")
+
+
 if __name__ == "__main__":
     moved_cards()
     stale_rows()
     empty_and_loading()
     single_card_moved()
     unreadable_detail()
+    handed_in_details()
+    hand_in_disabled()

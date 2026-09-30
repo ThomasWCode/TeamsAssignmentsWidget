@@ -15,6 +15,7 @@ class FakeNode(
     override val isSelected: Boolean,
     override val children: List<FakeNode>,
     private val onAction: (FakeNode, UiAction) -> Boolean,
+    override val isEnabled: Boolean = true,
 ) : UiNode {
     override fun perform(action: UiAction): Boolean = onAction(this, action)
     override fun toString(): String = describe()
@@ -23,7 +24,7 @@ class FakeNode(
     fun shifted(dx: Int): FakeNode = FakeNode(
         className, text, contentDescription, viewId,
         bounds.copy(left = bounds.left + dx, right = bounds.right + dx),
-        isClickable, isScrollable, isSelected, children.map { it.shifted(dx) }, onAction,
+        isClickable, isScrollable, isSelected, children.map { it.shifted(dx) }, onAction, isEnabled,
     )
 }
 
@@ -53,6 +54,7 @@ object Fixtures {
         isSelected = getAttribute("selected") == "true",
         children = childElements().map { it.toNode(onAction) },
         onAction = onAction,
+        isEnabled = getAttribute("enabled") != "false",
     )
 
     private fun Element.childElements(): List<Element> =

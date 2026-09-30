@@ -42,6 +42,29 @@ class AndroidTeamsDevice(private val service: AccessibilityService) : TeamsDevic
         topAppWindow()?.root?.takeIf { it.packageName == TeamsSelectors.TEAMS_PACKAGE }
 
     /**
+     * Whether Teams is on top showing Assignments, judged from its native toolbar alone: the
+     * list's title or a detail screen's subtitle reads `Assignments`. Cheap enough to ask after
+     * every change in Teams, where copying the whole window isn't.
+     */
+    fun showsAssignments(): Boolean {
+        val root = teamsWindowRoot() ?: return false
+        return listOf(TeamsSelectors.TOOLBAR_TITLE, TeamsSelectors.TOOLBAR_SUBTITLE).any { id ->
+            root.findAccessibilityNodeInfosByViewId("${TeamsSelectors.TEAMS_PACKAGE}:id/$id").any {
+                it.text?.toString()?.trim() == TeamsSelectors.ASSIGNMENTS_TITLE
+            }
+        }
+    }
+
+    /**
+     * A snapshot of Teams' window for a look outside a workflow (see [TeamsObserver]): null,
+     * rather than an abort, when Teams isn't on top or its tree is too big to copy whole.
+     */
+    fun teamsSnapshot(): UiNode? {
+        val root = teamsWindowRoot() ?: return null
+        return AndroidUiNode.snapshot(root).takeIf { it.complete }?.root
+    }
+
+    /**
      * The app the user is looking at. A system window over the middle of the screen, such as the
      * notification shade, counts too: the user has pulled something over Teams, so the workflow
      * treats it like leaving Teams (it waits, then stops) rather than working underneath it.
