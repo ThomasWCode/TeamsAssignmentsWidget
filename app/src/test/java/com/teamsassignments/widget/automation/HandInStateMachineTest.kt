@@ -24,6 +24,9 @@ class HandInStateMachineTest {
     private val log = mutableListOf<String>()
     private var pressing = 0
 
+    /** What onPressing answers: false as if the user had just tapped Cancel. */
+    private var allowPress = true
+
     private val physics = Assignment(
         key = "4c958b24-de6c-429b-846b-1d02d0cbed0b",
         title = "Particle Physics Test",
@@ -43,7 +46,10 @@ class HandInStateMachineTest {
             now = { testScheduler.currentTime },
             log = { log += it },
             isCancelled = isCancelled,
-            onPressing = { pressing++ },
+            onPressing = {
+                pressing++
+                allowPress
+            },
         )
 
     private val FakeTeamsDevice.handInPresses get() = clicked.count { it.startsWith("HAND IN") }
@@ -197,6 +203,38 @@ class HandInStateMachineTest {
         assertEquals(SyncAbort.CANCELLED, abort.reason)
         assertEquals(0, device.handInPresses)
         assertEquals(0, pressing)
+    }
+
+    @Test
+    fun `presses nothing when Cancel came at the last moment`() = runTest {
+        // Codex review: Cancel tapped between the last check and the press must still hold.
+        val device = FakeTeamsDevice()
+        allowPress = false
+        val abort = assertFailsWith<SyncAbort> { handIn(device).run(physics) }
+        assertEquals(SyncAbort.CANCELLED, abort.reason)
+        assertEquals(1, pressing)
+        assertEquals(0, device.handInPresses)
+    }
+
+    @Test
+    fun `never presses Hand in on a screen whose title only starts the chosen one's`() = runTest {
+        // Codex review: opening a card allows a prefix ("Particle Physics" for "Particle Physics
+        // Test"), as a collapsed card's title is cut short; a mis-tap could open such a screen.
+        val device = FakeTeamsDevice().apply { detailOverrides[physics.key] = "detail_4c958b24_prefix_title" }
+        assertEquals(HandInResult.Mismatch, handIn(device).run(physics))
+        assertEquals(0, device.handInPresses)
+        assertEquals(0, pressing)
+    }
+
+    @Test
+    fun `finds the assignment with the hand-in's own timings`() = runTest {
+        // Codex review: the navigation phase used its own defaults, not the hand-in's config.
+        val device = FakeTeamsDevice(now = { testScheduler.currentTime }).apply {
+            launchLoading = "list_assignments_loading" to 8_000L
+        }
+        val quick = HandInStateMachine(device, AutomationConfig(globalTimeoutMs = 3_000), now = { testScheduler.currentTime })
+        assertEquals("Took too long", assertFailsWith<SyncAbort> { quick.run(physics) }.reason)
+        assertEquals(0, device.handInPresses)
     }
 
     @Test

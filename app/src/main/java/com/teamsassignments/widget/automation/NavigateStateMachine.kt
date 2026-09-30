@@ -33,10 +33,18 @@ class NavigateStateMachine(
     var notListed = false
         private set
 
+    /**
+     * After a [run]: the title the list showed for the card it went to, unless that card was
+     * collapsed (its title is then cut out of its text, and may be off).
+     */
+    var listedTitle: String? = null
+        private set
+
     /** [saved] is the whole saved list: as in a sync, a tab that had work must stay empty for longer. */
     suspend fun run(target: Assignment, saved: List<Assignment> = emptyList()): Boolean {
         begin()
         notListed = false
+        listedTitle = null
         val searchStart = wallClock()
         log("Opening \"${target.title}\"")
         openAssignments()
@@ -63,6 +71,7 @@ class NavigateStateMachine(
                 cards.firstOrNull { it.title == target.title && (it.className == target.className || it.collapsed) }?.id
                     ?: continue
             }
+            listedTitle = cards.firstOrNull { it.id == id && !it.collapsed }?.title
             // openCard scrolls for a card that isn't in the tree (should the list be virtualised)
             // and checks the detail screen against the title the card shows now, so a card renamed
             // since the last sync still opens; the saved title is only a fallback.

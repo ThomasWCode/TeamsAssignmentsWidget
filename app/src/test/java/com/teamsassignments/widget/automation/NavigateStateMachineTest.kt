@@ -11,6 +11,7 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -30,6 +31,26 @@ class NavigateStateMachineTest {
         assertTrue(navigate(device).run(target))
         assertEquals(Screen.Detail(target.key, Tab.Forthcoming), device.screen)
         assertFalse(Tab.PastDue.viewId in device.pressed)
+    }
+
+    @Test
+    fun `remembers the title the list showed, unless the card was collapsed`() = runTest {
+        val target = assignment("4c958b24-de6c-429b-846b-1d02d0cbed0b", "Physics test (old name)", AssignmentTab.Forthcoming)
+        val machine = navigate(FakeTeamsDevice())
+        assertTrue(machine.run(target))
+        assertEquals("Particle Physics Test", machine.listedTitle)
+
+        // After a visit its card collapses into one node, whose title is cut out of its text.
+        val collapsed = FakeTeamsDevice(
+            lists = mapOf(
+                Tab.Forthcoming to "list_forthcoming_after_back",
+                Tab.PastDue to "list_past_due",
+                Tab.Completed to "list_completed",
+            ),
+        )
+        val again = navigate(collapsed)
+        assertTrue(again.run(target))
+        assertNull(again.listedTitle)
     }
 
     @Test

@@ -142,7 +142,7 @@ class AssignmentStoreTest {
         store.saveSuccess(listOf(physics))
         store.markFailed("Couldn't read the Past due list")
 
-        store.applyObserved { it + hausaufgabe }
+        store.applyObserved { saved, _ -> AssignmentStore.Observed(saved + hausaufgabe) }
         with(store.state.value) {
             assertEquals(listOf(physics, hausaufgabe), assignments)
             assertTrue("German Y12 2026/27 LKP" in classColors)
@@ -152,7 +152,50 @@ class AssignmentStoreTest {
         }
 
         store.markRunning(0, 3)
-        store.applyObserved { emptyList() }
+        store.applyObserved { _, _ -> AssignmentStore.Observed(emptyList()) }
         assertEquals(listOf(physics, hausaufgabe), store.state.value.assignments)
+    }
+
+    private class SettableClock(var now: Instant) : Clock() {
+        override fun instant(): Instant = now
+        override fun getZone() = ZoneOffset.UTC
+        override fun withZone(zone: java.time.ZoneId?) = this
+    }
+
+    @Test
+    fun `a hand-in is remembered for twelve hours, across a restart`() = runTest {
+        // Codex review: kept in memory only, it was forgotten whenever the service restarted.
+        val time = SettableClock(clock.instant())
+        AssignmentStore(file, time).apply {
+            saveSuccess(listOf(physics, hausaufgabe))
+            markHandedIn(physics.key)
+        }
+        val restarted = AssignmentStore(file, time)
+        assertEquals(setOf(physics.key), restarted.recentlyHandedIn())
+        time.now = time.now.plusSeconds(12 * 3_600L)
+        assertEquals(emptySet(), restarted.recentlyHandedIn())
+    }
+
+    @Test
+    fun `work only taken as handed in isn't remembered`() = runTest {
+        val store = AssignmentStore(file, clock)
+        store.saveSuccess(listOf(physics, hausaufgabe))
+        store.markHandedIn(physics.key, remembered = false)
+        assertEquals(listOf(hausaufgabe), store.state.value.assignments)
+        assertEquals(emptySet(), store.recentlyHandedIn())
+    }
+
+    @Test
+    fun `reading along remembers what it saw handed in, and is told what was`() = runTest {
+        val store = AssignmentStore(file, clock)
+        store.saveSuccess(listOf(physics, hausaufgabe))
+        store.markHandedIn(hausaufgabe.key)
+        var told = emptySet<String>()
+        store.applyObserved { saved, handedInLately ->
+            told = handedInLately
+            AssignmentStore.Observed(emptyList(), handedIn = saved.map { it.key })
+        }
+        assertEquals(setOf(hausaufgabe.key), told)
+        assertEquals(setOf(physics.key, hausaufgabe.key), store.recentlyHandedIn())
     }
 }

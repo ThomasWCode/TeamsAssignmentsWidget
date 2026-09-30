@@ -137,6 +137,16 @@ def handed_in_details():
         save(tree, f"detail_{guid}_handed_in")
 
 
+def prefix_titled_detail():
+    """Another assignment's screen, whose title only starts the chosen one's: "Particle Physics"
+    for "Particle Physics Test", as a mis-tap could open. Opening a card allows for a title cut
+    short (a collapsed card's is); handing in mustn't."""
+    tree = load("detail_4c958b24")
+    container = by_id(tree, "assignmentViewerVisibilityContainer")
+    next(n for n in container.iter("node") if n.get("text") == "Particle Physics Test").set("text", "Particle Physics")
+    save(tree, "detail_4c958b24_prefix_title")
+
+
 def zero_height(node):
     _, top, _, bottom = map(int, re.findall(r"-?\d+", node.get("bounds")))
     return bottom <= top
@@ -201,5 +211,6 @@ if __name__ == "__main__":
     unreadable_detail()
     handed_in_details()
     hand_in_disabled()
+    prefix_titled_detail()
     virtualised()
     stale_tab_rows()

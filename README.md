@@ -18,9 +18,11 @@ Tapping a row opens Teams and taps that assignment's card for you. Cards are fou
 
 ### Handing in
 
-Each row has a **Hand in** button. It asks first ("Hand in late?" once the work is overdue). Then the service opens the assignment the way a row tap does, checks that Teams still shows it as not handed in, and presses Teams' own **Hand in** (or **Hand in late**) button once. When Teams shows it as handed in, the row goes and the phone returns to the home screen.
+Each row has a **Hand in** button. It asks first ("Hand in late?" once the work is overdue). Then the service opens the assignment the way a row tap does, checks that the screen is that assignment's (its title exactly) and still not handed in, and presses Teams' own **Hand in** (or **Hand in late**) button once. When Teams shows it as handed in, the row goes and the phone returns to the home screen.
 
 - It hands in whatever work is already attached in Teams. It can't attach anything.
+- **Cancel** on the pill works until Hand in is pressed. From then on, the hand-in can't be called off.
+- If the screen that opens isn't exactly that assignment's (a same-named one, say), nothing is pressed and a capture of the screen is saved.
 - If Teams doesn't show it as handed in within 20 seconds, Teams stays open on the assignment so you can check, and a capture of the screen is saved.
 - An assignment the app has only seen on its own screen (see below) needs a sync first, so it can be found by its ID.
 - If it's on neither Forthcoming nor Past due, with both lists read in full (as below), nothing is pressed and it's taken as handed in, as a sync would. Tapping a row does the same.
@@ -37,7 +39,7 @@ When you open Assignments in Teams yourself, the app reads what's on screen, wit
 
 A list only counts once it has fully loaded, by the same tests a sync uses: the tab is selected, nothing is loading, the cards have stayed the same for 0.6 s (an empty list for 2 s, or 6 s if that tab had work at the last sync), and a tab you've just switched to isn't still showing the last tab's cards. *In full* means every card. Teams currently puts the whole list where the app can read it, cards off screen included, so one look is enough; if an update ever stopped that, you'd have to scroll from one end of the list to the other, pausing as you go, for it to count.
 
-Work falling due around the time you looked is left alone, since it may simply have moved from one list to the other. And anything taken as handed in this way comes back as soon as a list shows it again.
+Work falling due around the time you looked is left alone, since it may simply have moved from one list to the other. And anything taken as handed in this way comes back as soon as a list shows it again. Work Teams has shown as handed in, or that the widget handed in, isn't added back for 12 hours, even by a list Teams hasn't refreshed yet, and the app remembers this across restarts. A sync (↻) goes by Teams' lists alone.
 
 ### Safety and privacy
 
@@ -75,12 +77,13 @@ Then tap **↻**, and leave the phone alone until it returns to the home screen.
 | Wrong or missing details | Run **Full resync** in the app. |
 | *Hand in pressed, but Teams didn't confirm it* | Check the assignment in Teams: it may have been handed in anyway. If it was, a sync or a look at Completed takes it off the list. The saved capture shows what Teams did instead. |
 | *Nothing handed in: Teams showed no Hand in button …* | The assignment's screen had no Hand in button that could be pressed, for example because it's closed. Teams is left open on it. |
+| *Nothing handed in: the screen Teams opened wasn't exactly …* | Its title didn't exactly match the assignment chosen: a same-named one, perhaps, or one renamed since the last sync. Teams is left open on that screen and a capture is saved. Tap **↻**, then try again. |
 | *Nothing pressed: … is on neither Forthcoming nor Past due, so it's taken as handed in* (or *Taken as handed in: …* after a row tap) | It was most likely handed in on another device, or the teacher removed it. If it shouldn't have gone, **↻** brings it back. |
 | *Nothing handed in: couldn't find … on Teams' Forthcoming or Past due list* | A list couldn't be read in full, perhaps still loading. Nothing was pressed or removed; try again, or tap **↻**. |
 
 **When a Teams update breaks syncing**, the app gives you what's needed to fix it:
 
-- A sync that fails by itself saves a capture of the screen it got stuck on, as does a hand-in Teams doesn't confirm. One you cancel, or leave by switching apps, doesn't.
+- A sync that fails by itself saves a capture of the screen it got stuck on, as does a hand-in that meets an unexpected screen or that Teams doesn't confirm. One you cancel, or leave by switching apps, doesn't.
 - **Troubleshooting → Dump Teams screen** shows a *Capture* button over Teams. Go to the screen in question, tap it, and share the file.
 - **Recent steps** lists what the automation did. The same log is in `adb logcat -s TeamsAutomation`.
 

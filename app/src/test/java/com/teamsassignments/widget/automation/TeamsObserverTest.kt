@@ -345,12 +345,15 @@ class TeamsObserverTest {
     @Test
     fun `removes an assignment handed in within Teams, as seen on the phone`() {
         // The phone's log: "Dr. Frost - Forces - Week 3" was read, then handed in in Teams, and
-        // reading along took it off the list from the screen captured here.
+        // reading along took it off the list from the screen captured here, on its due date.
+        val phone = Clock.fixed(Instant.parse("2026-09-30T09:54:00Z"), ZoneId.of("Europe/London"))
+        fun mergeOnPhone(sighting: Sighting, saved: List<Assignment>) =
+            TeamsObserver.merge(sighting, saved, DueDateParser(phone), phone.millis())
         val observer = TeamsObserver()
-        val saved = merge(observer.see("list_forthcoming"), emptyList()).assignments
-        val read = merge(observer.see("detail_f63a23c9", at = 2_000), saved)
+        val saved = mergeOnPhone(observer.see("list_forthcoming"), emptyList()).assignments
+        val read = mergeOnPhone(observer.see("detail_f63a23c9", at = 2_000), saved)
         assertEquals(listOf("read \"Dr. Frost - Forces - Week 3\""), read.changes)
-        val handedIn = merge(observer.see("detail_f63a23c9_handed_in", at = 4_000), read.assignments)
+        val handedIn = mergeOnPhone(observer.see("detail_f63a23c9_handed_in", at = 4_000), read.assignments)
         assertEquals(listOf("\"Dr. Frost - Forces - Week 3\" handed in"), handedIn.changes)
         assertEquals(listOf("f63a23c9-6d36-4c5c-a858-422d8a17a723"), handedIn.handedIn)
         assertEquals(6, handedIn.assignments.size)
@@ -389,6 +392,20 @@ class TeamsObserverTest {
         val merged = merge(TeamsObserver().see("detail_4c958b24"), saved)
         assertEquals(saved, merged.assignments)
         assertTrue(merged.changes.isEmpty())
+    }
+
+    @Test
+    fun `a same-titled assignment due at another time is left alone`() {
+        // Codex review: weekly work repeats its title and class. A lone saved match due at another
+        // time is another week's, so this screen neither overwrites it nor removes it.
+        val lastWeek = Assignment(
+            key = physics, title = "Particle Physics Test", className = "12.2-PH3",
+            dueAt = millis("2026-09-22T07:30:00Z"), description = "Last week's",
+        )
+        val opened = merge(TeamsObserver().see("detail_4c958b24"), listOf(lastWeek))
+        assertEquals(listOf(lastWeek), opened.assignments)
+        assertTrue(opened.changes.isEmpty())
+        assertEquals(listOf(lastWeek), merge(TeamsObserver().see("detail_4c958b24_handed_in"), listOf(lastWeek)).assignments)
     }
 
     @Test
