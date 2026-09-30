@@ -249,6 +249,7 @@ class TeamsAutomationService : AccessibilityService() {
         }
     }
 
+    /** Toasts lead with the outcome: Android 12+ cuts a text toast off after two lines. */
     private suspend fun runHandIn(target: Assignment) {
         log.add("── Hand in ──")
         banner.show("Handing in…", "Cancel", showSpinner = true) { cancelRequested = true }
@@ -278,25 +279,22 @@ class TeamsAutomationService : AccessibilityService() {
                     handedIn = true
                     if (result == HandInResult.HandedIn) "Handed in $name" else "$name was already handed in"
                 }
-                HandInResult.NotFound -> "Couldn't find $name in Teams' work to hand in. Nothing was handed in."
+                // Most likely handed in already, somewhere the widget didn't see; a sync drops it.
+                HandInResult.NotFound -> "Nothing handed in: $name isn't on Teams' Forthcoming or Past due list. ↻ updates the widget."
                 HandInResult.NoButton -> {
                     dumper.saveFailureDump()
-                    "Teams didn't offer Hand in for $name. Nothing was handed in."
+                    "Nothing handed in: Teams showed no Hand in button for $name."
                 }
                 HandInResult.Unconfirmed -> {
                     dumper.saveFailureDump()
-                    "Pressed Hand in, but Teams didn't confirm it. Check $name in Teams."
+                    "Hand in pressed, but Teams didn't confirm it. Check $name in Teams."
                 }
             }
         } catch (e: SyncAbort) {
             // Every abort comes before Hand in is pressed: the workflow reports a stop after it as Unconfirmed.
             log.add("Hand-in stopped: ${e.reason}")
             if (!e.byUser) dumper.saveFailureDump()
-            if (e.reason == SyncAbort.CANCELLED) {
-                "Hand-in cancelled. Nothing was handed in."
-            } else {
-                "Couldn't hand in $name: ${e.reason}. Nothing was handed in."
-            }
+            if (e.reason == SyncAbort.CANCELLED) "Hand-in cancelled. Nothing was handed in." else "Nothing handed in: ${e.reason}"
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -304,7 +302,7 @@ class TeamsAutomationService : AccessibilityService() {
             Log.e(SyncLog.TAG, "Handing in crashed", e)
             log.add("Hand-in crashed: $e")
             dumper.saveFailureDump()
-            if (pressed) "Something went wrong after pressing Hand in. Check $name in Teams." else "Something went wrong. Nothing was handed in."
+            if (pressed) "Hand in pressed, but then something went wrong. Check $name in Teams." else "Nothing handed in: something went wrong."
         } finally {
             withContext(NonCancellable) {
                 banner.hide()

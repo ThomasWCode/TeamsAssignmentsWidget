@@ -69,8 +69,9 @@ Then tap **↻**, and leave the phone alone until it returns to the home screen.
 | *Sync stopped* | Teams went out of view mid-sync: you went Home or to another app, pulled down the notification shade, or a call came in. The list is from the time shown. Just sync again. |
 | *Last sync failed: Couldn't read the … list* or similar | Teams may have changed its layout. See below. |
 | Wrong or missing details | Run **Full resync** in the app. |
-| *Pressed Hand in, but Teams didn't confirm it* | Check the assignment in Teams: it may have been handed in anyway. If it was, a sync or a look at Completed takes it off the list. The saved capture shows what Teams did instead. |
-| *Teams didn't offer Hand in* | The assignment's screen had no Hand in button that could be pressed, for example because it's closed. Nothing was handed in, and Teams is left open on it. |
+| *Hand in pressed, but Teams didn't confirm it* | Check the assignment in Teams: it may have been handed in anyway. If it was, a sync or a look at Completed takes it off the list. The saved capture shows what Teams did instead. |
+| *Nothing handed in: Teams showed no Hand in button …* | The assignment's screen had no Hand in button that could be pressed, for example because it's closed. Teams is left open on it. |
+| *Nothing handed in: … isn't on Teams' Forthcoming or Past due list* | It's most likely handed in already, perhaps on another device, or the teacher removed it. Tap **↻** to update the widget. |
 
 **When a Teams update breaks syncing**, the app gives you what's needed to fix it:
 
@@ -115,11 +116,11 @@ scripts/       derive_fixtures.py: builds the edge-case fixtures from the captur
 - a sync stopped by Cancel, by going Home, and by pulling down the notification shade;
 - the service switched off and back on;
 - light and dark themes;
-- resizing down to the launcher's smallest size, 3×2.
+- resizing down to the launcher's smallest size, 3×2;
+- handing in from the widget (a late one), and reading along while Teams is open: instructions saved on opening an assignment, and an assignment handed in within Teams taken off the list.
 
 ## Known limitations
 
 - **Tied to the Teams app's layout and English (en-GB) wording.** An update to Teams can break syncing until `TeamsSelectors.kt` is updated.
 - **Takes over the screen while syncing** and while handing in. Syncing is manual only, and doesn't run while the phone is locked; browsing Assignments in Teams updates the list without taking over. The widget still redraws at midnight and as deadlines pass, from saved data, so "Today" and "Overdue" stay right.
-- **What Teams shows after Hand in hasn't been captured yet.** The hand-in waits for the status to read *Handed in* or the button *Undo hand in*. If Teams shows something else, the hand-in may go through but be reported as unconfirmed.
 - Assignments you've handed in, and anything older than Teams' *Past due* list, aren't shown.

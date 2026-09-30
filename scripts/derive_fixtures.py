@@ -5,8 +5,9 @@ rows load, an empty or loading list, a single card moving tabs, a detail screen 
 readable yet. Each is made here by
 editing a real capture, so the node shapes stay authentic.
 
-Others haven't been seen at all yet, and are a best guess until they are captured: a detail
-screen just after Hand in, and one whose Hand in button is disabled.
+Two carry a single capture over to other assignments: the handed-in detail screens copy what
+detail_f63a23c9_handed_in, captured on the phone after a hand-in, shows. A greyed-out Hand in
+button hasn't been seen at all, so that one is a guess.
 
 Run from the repository root after replacing the captures:
 
@@ -119,13 +120,19 @@ def hand_in_button(tree):
 
 
 def handed_in_details():
-    """Detail screens as Teams is expected to show them once handed in, not yet captured: the
-    status reads Handed in (or Handed in late), and the toolbar button Undo hand in."""
+    """Two more detail screens as the captured detail_f63a23c9_handed_in shows one once handed in:
+    the status reads "Handed in late Wed 30 Sept 2026 at 10:54", the toolbar button "UNDO HAND-IN",
+    and the Attach and New menus are disabled. The on-time wording ("Handed in ...") is inferred."""
     for guid, status in (("4c958b24", "Handed in"), ("88fafeb2", "Handed in late")):
         tree = load(f"detail_{guid}")
         container = by_id(tree, "assignmentViewerVisibilityContainer")
-        next(n for n in container.iter("node") if n.get("text") == "Not handed in").set("text", status)
-        hand_in_button(tree).set("text", "UNDO HAND IN")
+        next(n for n in container.iter("node") if n.get("text") == "Not handed in").set(
+            "text", f"{status} Mon 28 Sept 2026 at 06:41"
+        )
+        hand_in_button(tree).set("text", "UNDO HAND-IN")
+        for node in container.iter("node"):
+            if node.get("content-desc") in ("Open Attach menu", "Open New menu"):
+                node.set("enabled", "false")
         save(tree, f"detail_{guid}_handed_in")
 
 

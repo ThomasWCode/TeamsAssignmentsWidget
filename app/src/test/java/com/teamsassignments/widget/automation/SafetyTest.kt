@@ -7,6 +7,7 @@ import org.junit.Test
 import java.time.Clock
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -78,7 +79,9 @@ class SafetyTest {
 
         val detail = load("detail_4c958b24")
         val refused = listOf(
-            load("detail_4c958b24_handed_in").walk().single { it.text == "UNDO HAND IN" },
+            // As captured on the phone after a hand-in.
+            load("detail_f63a23c9_handed_in").walk().single { it.text == "UNDO HAND-IN" },
+            load("detail_4c958b24_handed_in").walk().single { it.text == "UNDO HAND-IN" },
             load("detail_4c958b24_hand_in_disabled").walk().single { it.text == "HAND IN" },
             detail.walk().single { it.contentDescription == "Open Attach menu" },
             detail.walk().single { it.contentDescription == "Open New menu" },
@@ -93,6 +96,17 @@ class SafetyTest {
         )
         refused.forEach { node -> assertFailsWith<SyncAbort>(node.describe()) { handIn.requireHandInButton(node) } }
         assertTrue(clicks.isEmpty())
+    }
+
+    @Test
+    fun `the forbidden-control guard knows Teams' own wording`() {
+        // Every label the captures show on a dangerous control, hyphenated UNDO HAND-IN included.
+        listOf("HAND IN", "HAND IN LATE", "UNDO HAND-IN", "Hand-in", "Open Attach menu", "Open New menu").forEach {
+            assertTrue(TeamsSelectors.FORBIDDEN_CONTROL.containsMatchIn(it), it)
+        }
+        listOf("Forthcoming", "Past due", "Completed", "You have past due assignments").forEach {
+            assertFalse(TeamsSelectors.FORBIDDEN_CONTROL.containsMatchIn(it), it)
+        }
     }
 
     @Test
