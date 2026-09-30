@@ -100,7 +100,7 @@ Toolbar (native)
   ImageButton #overflow_menu_button cd='Back'
   TextView #action_bar_title_text       ← CLASS NAME
   TextView #action_bar_sub_title_text   ← "Assignments"
-  Button "HAND IN" / "HAND IN LATE"     ← only the hand-in workflow presses it
+  Button "HAND IN" / "HAND IN LATE"     ← only the hand-in workflow presses it; "UNDO HAND-IN" once handed in
 WebView
   View #assignmentViewerVisibilityContainer   ← detail-screen marker
     TextView "Not handed in"                  ← status
@@ -148,7 +148,7 @@ Syncing and opening an assignment only ever press **tab nodes** (`tab-*`) and **
 As a second guard, they refuse a tab whose label matches hand-in, turn-in, submit, attach, delete or similar.
 The `HAND IN` / `HAND IN LATE` toolbar button and the `Open Attach menu` / `Open New menu` buttons are the dangerous controls on the detail screen.
 
-The one exception is the **hand-in workflow**, which runs only after the user confirms on the widget. It opens the assignment by its GUID (never by title), checks that the status isn't handed in, and presses the `Button` in the native `toolbar` whose text is exactly `HAND IN` or `HAND IN LATE`, and enabled. It uses the button's click action: it's a native view, which takes click actions the way TalkBack presses it, unlike the WebView content. It presses once, and a second time only if Teams reports that the first click didn't go through. It never presses `UNDO HAND IN` or anything else, and never taps the toolbar.
+The one exception is the **hand-in workflow**, which runs only after the user confirms on the widget. It opens the assignment by its GUID (never by title), checks that the status isn't handed in, and presses the `Button` in the native `toolbar` whose text is exactly `HAND IN` or `HAND IN LATE`, and enabled. It uses the button's click action: it's a native view, which takes click actions the way TalkBack presses it, unlike the WebView content. It presses once, and a second time only if Teams reports that the first click didn't go through. It never presses `UNDO HAND-IN` or anything else, and never taps the toolbar.
 
 Gesture taps (see below) have extra rules:
 
@@ -175,10 +175,21 @@ Not yet seen, and worth capturing with **Dump Teams screen** when they turn up:
 
 - An **empty** Forthcoming or Past due tab. For now an empty list is believed only after holding for 2 s (6 s if that tab had work at the last sync) with no loading indicator.
 - What Teams shows **while a tab loads** after a switch. (The whole module loading at launch is captured, above.) A spinner surfaces as a `ProgressBar` node, and an exact "Loading" label is also treated as loading.
-- The detail screen **after Hand in**. The hand-in workflow waits up to 20 s for the status to start `Handed in` (or `Turned in`/`Submitted`), or for the toolbar button to read `UNDO HAND IN`. Whether Teams first asks to confirm, or shows a celebration over the screen, is unknown; either would leave the hand-in reported as unconfirmed, with a failure capture saved.
+- An **on-time** hand-in's status. Only a late one has been captured (below); the check accepts any status starting `Handed in`, `Turned in` or `Submitted`.
 - A detail screen opened **from a Teams notification**, rather than from the list. Reading along only trusts its toolbar title as the class name while the subtitle reads `Assignments`.
 
-Some test fixtures are **derived** from the captures rather than captured: `list_past_due_with_moved_cards`, `list_past_due_stale_rows`, `list_past_due_empty`, `list_past_due_loading`, `list_forthcoming_single`, `list_past_due_single_moved`, `detail_unreadable`, `detail_4c958b24_handed_in`, `detail_88fafeb2_handed_in` and `detail_4c958b24_hand_in_disabled`. Each builds a state that's hard to catch live (a card on both tabs, a tab selected before its rows load, an empty or loading list, a single card moving tabs, an unreadable detail screen) or not yet seen (a handed-in detail screen, a greyed-out Hand in button) by editing a real capture. The handed-in ones are a guess at Teams' wording until a real one is captured. [`scripts/derive_fixtures.py`](../scripts/derive_fixtures.py) regenerates them after fresh captures.
+Some test fixtures are **derived** from the captures rather than captured: `list_past_due_with_moved_cards`, `list_past_due_stale_rows`, `list_past_due_empty`, `list_past_due_loading`, `list_forthcoming_single`, `list_past_due_single_moved`, `detail_unreadable`, `detail_4c958b24_handed_in`, `detail_88fafeb2_handed_in` and `detail_4c958b24_hand_in_disabled`. Each builds a state that's hard to catch live (a card on both tabs, a tab selected before its rows load, an empty or loading list, a single card moving tabs, an unreadable detail screen), seen only once (a handed-in detail screen, carried over from the captured `detail_f63a23c9_handed_in` to other assignments), or not seen at all (a greyed-out Hand in button), by editing a real capture. [`scripts/derive_fixtures.py`](../scripts/derive_fixtures.py) regenerates them after fresh captures.
+
+## Handing in and reading along (0.2.0 on the phone)
+
+- **The detail screen once handed in**, captured as `detail_f63a23c9_handed_in` just after "Dr. Frost - Forces - Week 3" was handed in within Teams:
+  - the status reads `Handed in late Wed 30 Sept 2026 at 10:54`;
+  - the toolbar button reads `UNDO HAND-IN`, **hyphenated**, where the Hand in button reads `HAND IN`. The first matcher, written before this capture, missed the hyphen; the status line had confirmed hand-ins regardless;
+  - the `Open Attach menu` and `Open New menu` buttons are disabled;
+  - Teams also puts the status in a `screenReaderAnnouncement` node, outside the detail container.
+- **Handing in from the widget** ("Prep 18/09/2026 - Chapter 12 review", past due): `HAND IN LATE` took the click action, and the status read handed in within 2 s, with no prompt or dialog in between.
+- **Reading along** saved the Dr. Frost assignment's details when it was opened, and took it off the list as soon as Teams showed it handed in.
+- A hand-in for work handed in before 0.2.0 was installed (so the widget still listed it) found the card on neither open tab and pressed nothing. A sync then dropped it.
 
 ## Consequences for the plan
 

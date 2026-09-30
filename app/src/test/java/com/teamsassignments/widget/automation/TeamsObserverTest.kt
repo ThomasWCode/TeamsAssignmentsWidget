@@ -214,6 +214,20 @@ class TeamsObserverTest {
     }
 
     @Test
+    fun `removes an assignment handed in within Teams, as seen on the phone`() {
+        // The phone's log: "Dr. Frost - Forces - Week 3" was read, then handed in in Teams, and
+        // reading along took it off the list from the screen captured here.
+        val observer = TeamsObserver()
+        val saved = merge(observer.see("list_forthcoming"), emptyList()).assignments
+        val read = merge(observer.see("detail_f63a23c9", at = 2_000), saved)
+        assertEquals(listOf("read \"Dr. Frost - Forces - Week 3\""), read.changes)
+        val handedIn = merge(observer.see("detail_f63a23c9_handed_in", at = 4_000), read.assignments)
+        assertEquals(listOf("\"Dr. Frost - Forces - Week 3\" handed in"), handedIn.changes)
+        assertEquals(listOf("f63a23c9-6d36-4c5c-a858-422d8a17a723"), handedIn.handedIn)
+        assertEquals(6, handedIn.assignments.size)
+    }
+
+    @Test
     fun `adds open work seen only on its own screen, then takes its GUID from the list`() {
         // As when a Teams notification opens a new assignment straight on its detail screen.
         val observer = TeamsObserver()

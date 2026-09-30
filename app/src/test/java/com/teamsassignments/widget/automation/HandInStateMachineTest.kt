@@ -14,8 +14,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The hand-in workflow against the fake phone. The handed-in screens it ends on are derived, not
- * captured (see scripts/derive_fixtures.py), so these pin down the workflow, not Teams' wording.
+ * The hand-in workflow against the fake phone. It ends on a handed-in screen: the one captured on
+ * the phone for "Dr. Frost - Forces - Week 3", or one derived in its wording for other assignments
+ * (see scripts/derive_fixtures.py).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class HandInStateMachineTest {
@@ -55,6 +56,33 @@ class HandInStateMachineTest {
         assertEquals(1, device.handInPresses)
         assertEquals(1, pressing)
         assertEquals(Screen.Detail(physics.key, Tab.Forthcoming), device.screen)
+    }
+
+    @Test
+    fun `recognises the handed-in screen Teams really shows`() = runTest {
+        val drFrost = Assignment(
+            key = "f63a23c9-6d36-4c5c-a858-422d8a17a723",
+            title = "Dr. Frost - Forces - Week 3",
+            className = "12.34 - Further Maths Mechanics - Mr Ryder Richardson 26/27",
+            tab = AssignmentTab.Forthcoming,
+        )
+        val device = FakeTeamsDevice()
+        assertEquals(HandInResult.HandedIn, handIn(device).run(drFrost))
+        assertEquals(listOf(drFrost.key), device.handedIn)
+        assertEquals(1, device.handInPresses)
+    }
+
+    @Test
+    fun `presses nothing on a screen Teams already shows as handed in`() = runTest {
+        val device = FakeTeamsDevice().apply { detailOverrides[physics.key] = "detail_f63a23c9_handed_in" }
+        // The captured screen is another assignment's, so it must not open as this one...
+        assertEquals(HandInResult.NotFound, handIn(device).run(physics))
+        assertEquals(0, device.handInPresses)
+        // ...and on its own assignment it counts as handed in already.
+        val drFrost = FakeTeamsDevice().apply { detailOverrides["f63a23c9-6d36-4c5c-a858-422d8a17a723"] = "detail_f63a23c9_handed_in" }
+        val target = physics.copy(key = "f63a23c9-6d36-4c5c-a858-422d8a17a723", title = "Dr. Frost - Forces - Week 3")
+        assertEquals(HandInResult.AlreadyHandedIn, handIn(drFrost).run(target))
+        assertTrue(drFrost.clicked.none { "HAND" in it }, drFrost.clicked.toString())
     }
 
     @Test

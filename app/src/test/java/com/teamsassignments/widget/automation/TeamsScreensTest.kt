@@ -407,8 +407,26 @@ class TeamsScreensTest {
     }
 
     @Test
+    fun `reads the detail screen Teams showed after a hand-in`() {
+        // Captured on the phone just after "Dr. Frost - Forces - Week 3" was handed in, late, in Teams.
+        val root = Fixtures.load("detail_f63a23c9_handed_in")
+        with(TeamsScreens.detail(root)!!) {
+            assertEquals("Handed in late Wed 30 Sept 2026 at 10:54", status)
+            assertTrue(isHandedIn)
+            assertEquals("Dr. Frost - Forces - Week 3", title)
+            assertEquals("Due today at 08:30", dueText)
+            assertEquals("12.34 - Further Maths Mechanics - Mr Ryder Richardson 26/27", className)
+            assertEquals(detail("detail_f63a23c9").instructions, instructions)
+        }
+        // The button now reads UNDO HAND-IN, hyphen and all: an undo, never a Hand in.
+        assertNull(TeamsScreens.handInButton(root))
+        assertTrue(TeamsScreens.offersUndoHandIn(root))
+        assertTrue(TeamsScreens.classInToolbar(root))
+    }
+
+    @Test
     fun `a handed-in detail screen offers Undo, not Hand in`() {
-        // Derived, not captured: no handed-in detail screen has been seen yet.
+        // Derived from the captures, in the wording of detail_f63a23c9_handed_in.
         listOf("detail_4c958b24_handed_in", "detail_88fafeb2_handed_in").forEach { fixture ->
             val root = Fixtures.load(fixture)
             assertNull(TeamsScreens.handInButton(root), fixture)

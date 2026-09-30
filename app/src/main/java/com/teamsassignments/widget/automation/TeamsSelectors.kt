@@ -120,12 +120,13 @@ object TeamsSelectors {
 
     /**
      * The detail screen's toolbar button, `HAND IN` or `HAND IN LATE` (`TURN IN` in en-US). Only
-     * the hand-in workflow presses it, after the user confirms on the widget.
+     * the hand-in workflow presses it, after the user confirms on the widget. Teams hyphenates the
+     * words elsewhere (below), so a hyphen is allowed here too.
      */
-    val HAND_IN_BUTTON = Regex("""^(hand|turn) ?in( late)?$""", RegexOption.IGNORE_CASE)
+    val HAND_IN_BUTTON = Regex("""^(hand|turn)[ -]?in( late)?$""", RegexOption.IGNORE_CASE)
 
-    /** What that button is expected to read once the work is handed in. Never pressed. */
-    val UNDO_HAND_IN_BUTTON = Regex("""^undo (hand|turn) ?in$""", RegexOption.IGNORE_CASE)
+    /** What that button reads once the work is handed in: `UNDO HAND-IN`, hyphen and all. Never pressed. */
+    val UNDO_HAND_IN_BUTTON = Regex("""^undo (hand|turn)[ -]?in$""", RegexOption.IGNORE_CASE)
 
     // Safety
 
@@ -135,7 +136,7 @@ object TeamsSelectors {
      * The one exception, the Hand in button, has its own check in [HandInStateMachine].
      */
     val FORBIDDEN_CONTROL = Regex(
-        """\b(hand\s*in|turn\s*in|undo|submit|attach|delete|remove|upload|send|new menu|add work)\b""",
+        """\b(hand[\s-]*in|turn[\s-]*in|undo|submit|attach|delete|remove|upload|send|new menu|add work)\b""",
         RegexOption.IGNORE_CASE,
     )
 }
