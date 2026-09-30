@@ -231,6 +231,27 @@ class TeamsScreensTest {
     }
 
     @Test
+    fun `the tree holds the whole list, scrolled or not`() {
+        // Teams keeps every row in the tree: those out of view have zero height at the edge they're
+        // past, the bottom until reached and the top once scrolled past. The Past due footer too.
+        listOf(
+            "list_forthcoming", "list_forthcoming_scrolled", "list_past_due", "list_past_due_earlier_today",
+            "list_completed", "list_past_due_empty",
+        ).forEach { assertTrue(TeamsScreens.wholeListInTree(Fixtures.load(it)), it) }
+        assertEquals(TeamsScreens.ListInView(top = true, bottom = false), TeamsScreens.listInView(Fixtures.load("list_forthcoming")))
+        assertEquals(TeamsScreens.ListInView(top = false, bottom = true), TeamsScreens.listInView(Fixtures.load("list_forthcoming_scrolled")))
+        assertEquals(TeamsScreens.ListInView(top = true, bottom = true), TeamsScreens.listInView(Fixtures.load("list_past_due")))
+    }
+
+    @Test
+    fun `a list holding only the rows in view isn't whole`() {
+        // Derived: a virtualised list, which Teams' isn't, would have to be scrolled through.
+        listOf("list_forthcoming_virtualised", "list_forthcoming_virtualised_scrolled", "list_forthcoming_virtualised_end")
+            .forEach { assertFalse(TeamsScreens.wholeListInTree(Fixtures.load(it)), it) }
+        assertFalse(TeamsScreens.wholeListInTree(Fixtures.load("list_assignments_loading"))) // no list at all yet
+    }
+
+    @Test
     fun `a window caught sliding in is not at rest`() {
         // Captured on the phone mid-Back: the whole window 337 px to the left.
         val sliding = Fixtures.load("list_past_due_mid_transition")

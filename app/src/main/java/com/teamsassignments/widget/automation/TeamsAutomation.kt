@@ -39,6 +39,15 @@ data class AutomationConfig(
     val maxScrolls: Int = 15,
     /** How long Teams has to show work as handed in once Hand in is pressed. */
     val handInConfirmTimeoutMs: Long = 20_000,
+    /** How far apart the two open tabs may be read for work on neither to be taken as handed in. */
+    val bothTabsWithinMs: Long = 10 * 60_000,
+    /**
+     * Work falling due from this long before the open tabs were read, to [movedTabsAfterMs] after,
+     * may have moved from one to the other meanwhile (Teams may also have sorted a list when it
+     * loaded it), so it is never taken as handed in for being on neither.
+     */
+    val movedTabsBeforeMs: Long = 10 * 60_000,
+    val movedTabsAfterMs: Long = 2 * 60_000,
 )
 
 /**

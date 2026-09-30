@@ -7,7 +7,8 @@ editing a real capture, so the node shapes stay authentic.
 
 Two carry a single capture over to other assignments: the handed-in detail screens copy what
 detail_f63a23c9_handed_in, captured on the phone after a hand-in, shows. A greyed-out Hand in
-button hasn't been seen at all, so that one is a guess.
+button hasn't been seen at all, so that one is a guess, as are the virtualised lists (Teams keeps
+every row in the tree) and a tab showing Completed's rows.
 
 Run from the repository root after replacing the captures:
 
@@ -136,6 +137,55 @@ def handed_in_details():
         save(tree, f"detail_{guid}_handed_in")
 
 
+def zero_height(node):
+    _, top, _, bottom = map(int, re.findall(r"-?\d+", node.get("bounds")))
+    return bottom <= top
+
+
+def virtualised():
+    """Lists as a virtualised one would expose them, holding only the rows in view: without the
+    zero-height rows Teams keeps in the tree past the screen's edges. Teams doesn't do this today;
+    if it did, a list would only count as seen in full once scrolled through. The last is a view
+    further down sharing no card with the first, as after a fling past rows unseen."""
+    for source in ("list_forthcoming", "list_forthcoming_scrolled"):
+        tree = load(source)
+        rows = list_view(tree)
+        for row in list(rows):
+            if zero_height(row):
+                rows.remove(row)
+                continue
+            for child in list(row):
+                if len(child.get("resource-id", "")) == 36 and zero_height(child):
+                    row.remove(child)
+        save(tree, source.replace("list_forthcoming", "list_forthcoming_virtualised"))
+
+    tree = load("list_forthcoming_virtualised_scrolled")
+    for row in list_view(tree):
+        for child in list(row):
+            if child.get("resource-id", "")[:8] in ("4c958b24", "839994fb"):
+                row.remove(child)
+    save(tree, "list_forthcoming_virtualised_end")
+
+
+def stale_tab_rows():
+    """A newly selected tab still showing another's rows: Completed over Forthcoming's (open
+    cards), and Past due over Completed's (handed-in cards). The latter drops Completed's "load
+    more" placeholder, which alone would keep it from counting, to leave the handed-in cards."""
+    tree = load("list_forthcoming")
+    by_id(tree, "tab-Forthcoming").set("selected", "false")
+    by_id(tree, "tab-Completed").set("selected", "true")
+    save(tree, "list_completed_stale_rows")
+
+    tree = load("list_completed")
+    by_id(tree, "tab-Completed").set("selected", "false")
+    by_id(tree, "tab-Past-due").set("selected", "true")
+    for parent in tree.getroot().iter("node"):
+        for child in list(parent):
+            if child.get("class") == "android.widget.ProgressBar":
+                parent.remove(child)
+    save(tree, "list_past_due_completed_rows")
+
+
 def hand_in_disabled():
     """A detail screen whose Hand in button is greyed out."""
     tree = load("detail_4c958b24")
@@ -151,3 +201,5 @@ if __name__ == "__main__":
     unreadable_detail()
     handed_in_details()
     hand_in_disabled()
+    virtualised()
+    stale_tab_rows()

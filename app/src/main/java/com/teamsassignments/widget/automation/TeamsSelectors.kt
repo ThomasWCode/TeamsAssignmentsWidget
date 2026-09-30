@@ -45,6 +45,15 @@ object TeamsSelectors {
     val CARD_STATUS_LINE = Regex("""^(Due|Submitted|Handed in|Turned in)\b.*""", RegexOption.IGNORE_CASE)
     val HANDED_IN_LINE = Regex("""^(Submitted|Handed in|Turned in)\b""", RegexOption.IGNORE_CASE)
 
+    /** A card's due line: open work. Completed's cards show `Submitted at …`, or nothing. */
+    val CARD_DUE_LINE = Regex("""^Due\b""", RegexOption.IGNORE_CASE)
+
+    /**
+     * The class of the element holding the cards: Teams' list, which Chromium reports as a
+     * `ListView`. Its bounds show which ends of the list are on screen.
+     */
+    const val LIST_CLASS = "ListView"
+
     /** Separator between a card's due line and an optional tag chip. */
     const val SEPARATOR = "•"
 

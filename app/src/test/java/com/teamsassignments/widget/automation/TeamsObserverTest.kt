@@ -30,11 +30,15 @@ class TeamsObserverTest {
 
     private fun millis(utc: String) = Instant.parse(utc).toEpochMilli()
 
+    /** Looks at [root] [at] milliseconds in, the wall clock running from the fixtures' capture time. */
+    private fun TeamsObserver.lookAt(root: UiNode, at: Long, saved: List<Assignment> = emptyList()) =
+        look(root, at, clock.millis() + at, saved)
+
     /** Looks at [fixture] twice, far enough apart for it to hold still, and returns what was seen. */
-    private fun TeamsObserver.see(fixture: String, at: Long = 0L): Sighting {
+    private fun TeamsObserver.see(fixture: String, at: Long = 0L, saved: List<Assignment> = emptyList()): Sighting {
         val root = Fixtures.load(fixture)
-        assertNull(look(root, at), fixture)
-        return assertNotNull(look(root, at + 700), fixture)
+        assertNull(lookAt(root, at, saved), fixture)
+        return assertNotNull(lookAt(root, at + 700, saved), fixture)
     }
 
     private fun merge(
@@ -50,20 +54,20 @@ class TeamsObserverTest {
     fun `waits for a screen to hold still, then uses it once`() {
         val observer = TeamsObserver()
         val root = Fixtures.load("list_forthcoming")
-        assertNull(observer.look(root, 0))
+        assertNull(observer.lookAt(root, 0))
         assertTrue(observer.settling)
-        assertNull(observer.look(root, 300))
+        assertNull(observer.lookAt(root, 300))
         assertTrue(observer.settling)
-        assertNotNull(observer.look(root, 700))
+        assertNotNull(observer.lookAt(root, 700))
         assertFalse(observer.settling)
-        assertNull(observer.look(root, 1_400))
+        assertNull(observer.lookAt(root, 1_400))
     }
 
     @Test
     fun `scrolling the list doesn't make it new`() {
         val observer = TeamsObserver()
         observer.see("list_forthcoming")
-        assertNull(observer.look(Fixtures.load("list_forthcoming_scrolled"), 2_000))
+        assertNull(observer.lookAt(Fixtures.load("list_forthcoming_scrolled"), 2_000))
         assertFalse(observer.settling)
     }
 
@@ -72,8 +76,8 @@ class TeamsObserverTest {
         listOf("list_past_due_loading", "list_past_due_mid_transition", "list_assignments_loading").forEach { fixture ->
             val observer = TeamsObserver()
             val root = Fixtures.load(fixture)
-            assertNull(observer.look(root, 0), fixture)
-            assertNull(observer.look(root, 5_000), fixture)
+            assertNull(observer.lookAt(root, 0), fixture)
+            assertNull(observer.lookAt(root, 5_000), fixture)
             assertFalse(observer.settling, fixture)
         }
     }
@@ -84,8 +88,8 @@ class TeamsObserverTest {
         val observer = TeamsObserver()
         observer.see("list_forthcoming")
         val stale = Fixtures.load("list_past_due_stale_rows")
-        assertNull(observer.look(stale, 1_000))
-        assertNull(observer.look(stale, 5_000))
+        assertNull(observer.lookAt(stale, 1_000))
+        assertNull(observer.lookAt(stale, 5_000))
         assertEquals(Tab.PastDue, assertIs<Sighting.OnList>(observer.see("list_past_due", at = 6_000)).tab)
     }
 
@@ -149,7 +153,7 @@ class TeamsObserverTest {
     }
 
     @Test
-    fun `never removes an assignment just for being missing from a list`() {
+    fun `one open tab alone never removes an assignment for being missing`() {
         val elsewhere = Assignment(key = "11111111-2222-3333-4444-555555555555", title = "On the other tab", className = "Maths")
         val merged = merge(TeamsObserver().see("list_forthcoming"), listOf(elsewhere))
         assertEquals(8, merged.assignments.size)
@@ -178,10 +182,135 @@ class TeamsObserverTest {
     }
 
     @Test
-    fun `a Completed card that was never handed in is left for a sync to judge`() {
-        val closed = TeamsScreens.cards(Fixtures.load("list_completed")).first { !it.isHandedIn }
-        val saved = listOf(Assignment(key = closed.id, title = closed.title, className = closed.className))
-        assertEquals(saved, merge(TeamsObserver().see("list_completed"), saved).assignments)
+    fun `a card on the Completed list is taken as handed in, status line or none`() {
+        // Two Completed cards (closed without a submission) show no status line at all.
+        val cards = TeamsScreens.cards(Fixtures.load("list_completed"))
+        val submitted = cards.first { it.isHandedIn }
+        val closed = cards.first { !it.isHandedIn }
+        val saved = listOf(submitted, closed).map { Assignment(key = it.id, title = it.title, className = it.className) } +
+            Assignment(key = physics, title = "Particle Physics Test", className = "12.2-PH3")
+        val merged = merge(TeamsObserver().see("list_completed"), saved)
+        assertEquals(listOf(physics), merged.assignments.map { it.key })
+        assertEquals(listOf(submitted.id, closed.id), merged.handedIn)
+        assertTrue(merged.presumed.isEmpty())
+    }
+
+    @Test
+    fun `a newly selected Completed tab still showing open cards removes nothing`() {
+        // Seen switching from Forthcoming, its rows aren't taken as Completed's at all.
+        val observer = TeamsObserver()
+        observer.see("list_forthcoming")
+        val stale = Fixtures.load("list_completed_stale_rows")
+        assertNull(observer.lookAt(stale, 1_000))
+        assertNull(observer.lookAt(stale, 5_000))
+        // Even with the switch unseen, a card showing a due line isn't one of Completed's own.
+        val saved = merge(TeamsObserver().see("list_forthcoming"), emptyList()).assignments
+        assertEquals(saved, merge(TeamsObserver().see("list_completed_stale_rows"), saved).assignments)
+    }
+
+    // Taken as handed in for being on neither open tab
+
+    /** Handed in elsewhere: on neither open tab, and not falling due around now. */
+    private val gone = Assignment(
+        key = "11111111-2222-3333-4444-555555555555",
+        title = "Handed in on the laptop",
+        className = "Maths",
+        tab = AssignmentTab.Forthcoming,
+    )
+
+    @Test
+    fun `takes work on neither open tab as handed in, once both have been seen in full`() {
+        val observer = TeamsObserver()
+        val forthcoming = merge(observer.see("list_forthcoming"), listOf(gone))
+        assertTrue(gone in forthcoming.assignments, "one tab isn't enough")
+
+        val both = merge(observer.see("list_past_due", at = 2_000), forthcoming.assignments)
+        assertEquals(10, both.assignments.size)
+        assertTrue(both.assignments.none { it.key == gone.key })
+        assertEquals(listOf(gone.key), both.presumed)
+        // Not remembered as handed in: were it wrong, the list showing it would bring it back.
+        assertTrue(both.handedIn.isEmpty())
+        assertTrue("\"Handed in on the laptop\" is on neither Forthcoming nor Past due: taken as handed in" in both.changes)
+    }
+
+    @Test
+    fun `the two open tabs must be seen within ten minutes of each other`() {
+        val observer = TeamsObserver()
+        val saved = merge(observer.see("list_forthcoming"), listOf(gone)).assignments
+        val late = merge(observer.see("list_past_due", at = 11 * 60_000L), saved)
+        assertTrue(late.presumed.isEmpty())
+        // Back to Forthcoming a minute later: now the two views are close enough.
+        assertEquals(listOf(gone.key), merge(observer.see("list_forthcoming", at = 12 * 60_000L), late.assignments).presumed)
+    }
+
+    @Test
+    fun `work falling due around the reads is left alone`() {
+        // It may have moved from Forthcoming to Past due between the two looks.
+        val fallingDue = gone.copy(dueAt = clock.millis() + 60_000)
+        val longPast = gone.copy(key = "22222222-3333-4444-5555-666666666666", dueAt = clock.millis() - 3 * 3_600_000)
+        val observer = TeamsObserver()
+        val saved = merge(observer.see("list_forthcoming"), listOf(fallingDue, longPast)).assignments
+        assertEquals(listOf(longPast.key), merge(observer.see("list_past_due", at = 2_000), saved).presumed)
+    }
+
+    @Test
+    fun `an empty open tab must stay empty for 2 s, or 6 s if it had work`() {
+        val empty = Fixtures.load("list_past_due_empty")
+        val observer = TeamsObserver()
+        assertNull(observer.lookAt(empty, 0))
+        assertNull(observer.lookAt(empty, 1_500))
+        assertTrue(observer.settling)
+        assertNotNull(observer.lookAt(empty, 2_000))
+
+        val hadWork = listOf(gone.copy(tab = AssignmentTab.PastDue))
+        val wary = TeamsObserver()
+        assertNull(wary.lookAt(empty, 0, hadWork))
+        assertNull(wary.lookAt(empty, 5_000, hadWork))
+        assertTrue(wary.settling)
+        assertNotNull(wary.lookAt(empty, 6_000, hadWork))
+    }
+
+    @Test
+    fun `a newly selected tab still showing the other's rows proves nothing`() {
+        // Seen switching: Past due's stale rows are never trusted, and nothing goes until its own load.
+        val observer = TeamsObserver()
+        val saved = merge(observer.see("list_forthcoming"), listOf(gone)).assignments
+        val stale = Fixtures.load("list_past_due_stale_rows")
+        assertNull(observer.lookAt(stale, 1_000))
+        assertNull(observer.lookAt(stale, 5_000))
+        assertEquals(listOf(gone.key), merge(observer.see("list_past_due", at = 6_000), saved).presumed)
+
+        // Unseen switch: the two open tabs showing the same cards never count together.
+        val unseen = TeamsObserver()
+        unseen.see("list_past_due_stale_rows")
+        unseen.see("list_completed", at = 2_000)
+        assertTrue(merge(unseen.see("list_forthcoming", at = 4_000), listOf(gone)).presumed.isEmpty())
+
+        // An open tab showing handed-in cards is Completed's rows, not its own. (Derived without
+        // Completed's "load more" placeholder, which would keep it from counting in the first place.)
+        val completedRows = TeamsObserver()
+        completedRows.see("list_forthcoming")
+        assertTrue(merge(completedRows.see("list_past_due_completed_rows", at = 2_000), listOf(gone)).presumed.isEmpty())
+    }
+
+    @Test
+    fun `a list the tree doesn't hold whole counts once scrolled through, with no gap`() {
+        // Derived: a virtualised list, which Teams' isn't, only holds the rows in view.
+        val topOnly = TeamsObserver()
+        topOnly.see("list_forthcoming_virtualised")
+        assertTrue(merge(topOnly.see("list_past_due", at = 2_000), listOf(gone)).presumed.isEmpty(), "only the top seen")
+
+        // Scrolled from the top to the end, the two views overlapping: the whole list seen.
+        val observer = TeamsObserver()
+        observer.see("list_forthcoming_virtualised")
+        observer.see("list_forthcoming_virtualised_scrolled", at = 2_000)
+        assertEquals(listOf(gone.key), merge(observer.see("list_past_due", at = 4_000), listOf(gone)).presumed)
+
+        // A fling from the top straight to the end skips rows that were never in view.
+        val flung = TeamsObserver()
+        flung.see("list_forthcoming_virtualised")
+        flung.see("list_forthcoming_virtualised_end", at = 2_000)
+        assertTrue(merge(flung.see("list_past_due", at = 4_000), listOf(gone)).presumed.isEmpty())
     }
 
     // Detail screens

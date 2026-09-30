@@ -165,11 +165,26 @@ class HandInStateMachineTest {
     }
 
     @Test
-    fun `presses nothing when the assignment is on neither list`() = runTest {
+    fun `presses nothing when the assignment is on neither list, and says it's gone`() = runTest {
         val device = FakeTeamsDevice()
         val gone = physics.copy(key = "00000000-0000-0000-0000-000000000000")
-        assertEquals(HandInResult.NotFound, handIn(device).run(gone))
+        assertEquals(HandInResult.NotListed, handIn(device).run(gone))
         assertTrue(device.opened.isEmpty())
+        assertEquals(0, device.handInPresses)
+    }
+
+    @Test
+    fun `only says it's gone when both lists could be read in full`() = runTest {
+        // Derived: a virtualised Forthcoming list only holds the rows in view.
+        val device = FakeTeamsDevice(
+            lists = mapOf(
+                Tab.Forthcoming to "list_forthcoming_virtualised",
+                Tab.PastDue to "list_past_due",
+                Tab.Completed to "list_completed",
+            ),
+        )
+        val gone = physics.copy(key = "00000000-0000-0000-0000-000000000000")
+        assertEquals(HandInResult.NotFound, handIn(device).run(gone))
         assertEquals(0, device.handInPresses)
     }
 
