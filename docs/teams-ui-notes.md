@@ -193,6 +193,35 @@ Some test fixtures are **derived** from the captures rather than captured: `list
 - **Reading along** saved the Dr. Frost assignment's details when it was opened, and took it off the list as soon as Teams showed it handed in.
 - A hand-in for work handed in before 0.2.0 was installed (so the widget still listed it) found the card on neither open tab and pressed nothing. A sync then dropped it.
 
+## Deferred live tests
+
+Everything added since that run passes the unit tests, against the captures and the fixtures derived from them, but hasn't been checked on the phone yet. These checks are deferred to the next session with the phone. A hand-in check really hands the work in, so run those only on work that's ready.
+
+To run:
+
+- [ ] **Taken as handed in while reading along.** Hand something in on another device, then open Forthcoming and then Past due on the phone, pausing a couple of seconds on each. Its row goes, and the log reads `Seen in Teams: "…" is on neither Forthcoming nor Past due: taken as handed in`.
+- [ ] **Nothing taken on too little.** Opening only one of the two tabs, or the two more than 10 minutes apart, removes nothing.
+- [ ] **Brought back.** Work taken as handed in that wasn't comes back the next time its list is opened.
+- [ ] **Taken as handed in by a row tap or a hand-in**, on work handed in elsewhere. The toast reads *Taken as handed in: …* after a row tap, or *Nothing pressed: … is on neither Forthcoming nor Past due, so it's taken as handed in.* after a hand-in. The run above predates this and got *couldn't find*.
+- [ ] **Cancel at the last moment.** Tap Hand in, confirm, then tap Cancel on the pill straight away. The toast reads *Hand-in cancelled. Nothing was handed in.*, and Teams still shows the work as not handed in.
+- [ ] **Hand in on time.** Only `HAND IN LATE` has been pressed live, never `HAND IN`.
+- [ ] **Instructions saved after a row tap.** Tap a row, then read the assignment without touching the screen. The log gains `Seen in Teams: read "…"`.
+- [ ] **Looks resume after other screens.** Open a chat in Teams, go back to Assignments within a few seconds, and open an assignment not read before. Its instructions are still saved.
+- [ ] **Work from a notification.** A new assignment opened from a Teams notification is added, and gets its GUID the next time its list is seen. Until then its Hand in button answers *Sync with ↻ first, so Teams can find this assignment*.
+- [ ] **The widget's Hand in pill** at narrow widths (an icon below 250 dp), and the confirmation dialog in light and dark themes. So far these have only been rendered off-device.
+
+Too rare to set up; worth a capture with **Dump Teams screen** if one turns up:
+
+- a hand-in that stops because the screen Teams opened wasn't exactly the assignment's;
+- a hand-in with no Hand in button, or one Teams doesn't confirm within 20 s;
+- a slow Teams launch during a hand-in, which now has the hand-in's 45 s, not 25 s, to find the assignment;
+- a copy of Assignments that fails, and is retried;
+- a newly selected tab still showing the last tab's cards after a spinner;
+- work falling due while the tabs are read, which is left alone;
+- work opened from a notification that shares its title with a saved assignment: another class's is added alongside, another week's in the same class is left to the list;
+- a list Teams hasn't refreshed still showing work handed in, after a restart or after Completed showed it: it isn't added back;
+- a list that doesn't hold all its rows in the tree, which counts only once scrolled from end to end.
+
 ## Consequences for the plan
 
 1. The sync reads **Forthcoming then Past due**. Completed is ignored, and any card whose due line says `Submitted` is skipped defensively.
