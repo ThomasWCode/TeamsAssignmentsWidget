@@ -13,6 +13,12 @@ enum class HandInResult {
     /** The assignment wasn't found among the work to hand in. Nothing was pressed. */
     NotFound,
 
+    /**
+     * Both open tabs were read in full and neither lists it, so it's taken as handed in already
+     * (see [NavigateStateMachine.notListed]). Nothing was pressed.
+     */
+    NotListed,
+
     /** Its screen had no Hand in button that could be pressed. Nothing was pressed. */
     NoButton,
 
@@ -46,13 +52,14 @@ class HandInStateMachine(
 
     private val navigate = NavigateStateMachine(device, now = now, log = log, isCancelled = isCancelled)
 
-    suspend fun run(target: Assignment): HandInResult {
+    /** [saved] is the whole saved list, which sets how long an empty tab must stay empty (see [NavigateStateMachine.run]). */
+    suspend fun run(target: Assignment, saved: List<Assignment> = emptyList()): HandInResult {
         if (!TeamsSelectors.CARD_ID.matches(target.key)) {
             log("\"${target.title}\" has no Teams id yet, so it isn't handed in")
             return HandInResult.NotFound
         }
         log("Handing in \"${target.title}\"")
-        if (!navigate.run(target)) return HandInResult.NotFound
+        if (!navigate.run(target, saved)) return if (navigate.notListed) HandInResult.NotListed else HandInResult.NotFound
 
         begin()
         val (root, detail) = try {

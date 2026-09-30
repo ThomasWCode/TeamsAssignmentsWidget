@@ -141,16 +141,15 @@ class TeamsAutomationService : AccessibilityService() {
         stopWatching()
         job = scope.launch {
             banner.show("Opening assignment…", "Cancel", showSpinner = true) { cancelRequested = true }
+            val navigate = NavigateStateMachine(
+                device = device,
+                now = SystemClock::elapsedRealtime,
+                log = log::add,
+                isCancelled = { cancelRequested },
+            )
             val opened = try {
                 // Off the main thread: every step reads Teams' whole accessibility tree over IPC.
-                withContext(Dispatchers.Default) {
-                    NavigateStateMachine(
-                        device = device,
-                        now = SystemClock::elapsedRealtime,
-                        log = log::add,
-                        isCancelled = { cancelRequested },
-                    ).run(target)
-                }
+                withContext(Dispatchers.Default) { navigate.run(target, store.state.value.assignments) }
             } catch (e: SyncAbort) {
                 log.add("Opening stopped: ${e.reason}")
                 if (e.byUser) null else false
@@ -167,7 +166,18 @@ class TeamsAutomationService : AccessibilityService() {
                     log.persist()
                 }
             }
-            if (opened == false) {
+            if (opened == false && navigate.notListed) {
+                // Both open tabs read in full, and it's on neither: as a sync would, drop it.
+                store.markHandedIn(target.key)
+                log.add("\"${target.title}\" taken as handed in")
+                log.persist()
+                WidgetUpdater.update(this@TeamsAutomationService)
+                Toast.makeText(
+                    this@TeamsAutomationService,
+                    "Taken as handed in: “${target.title}” is on neither Forthcoming nor Past due",
+                    Toast.LENGTH_LONG,
+                ).show()
+            } else if (opened == false) {
                 Toast.makeText(this@TeamsAutomationService, "Couldn't find “${target.title}” in Teams", Toast.LENGTH_LONG).show()
             }
         }
@@ -255,7 +265,7 @@ class TeamsAutomationService : AccessibilityService() {
         banner.show("Handing in…", "Cancel", showSpinner = true) { cancelRequested = true }
         val name = "“${target.title}”"
         var pressed = false
-        var handedIn = false
+        var backToWidget = false
         val message = try {
             // Off the main thread: every step reads Teams' whole accessibility tree over IPC.
             val result = withContext(Dispatchers.Default) {
@@ -269,18 +279,25 @@ class TeamsAutomationService : AccessibilityService() {
                         // Once Hand in is pressed there is nothing left to cancel, so the pill loses its button.
                         withContext(Dispatchers.Main.immediate) { banner.show("Handing in…", "", showSpinner = true) {} }
                     },
-                ).run(target)
+                ).run(target, store.state.value.assignments)
             }
             log.add("Hand-in result: $result")
             when (result) {
                 HandInResult.HandedIn, HandInResult.AlreadyHandedIn -> {
                     store.markHandedIn(target.key)
                     noteHandedIn(listOf(target.key))
-                    handedIn = true
+                    backToWidget = true
                     if (result == HandInResult.HandedIn) "Handed in $name" else "$name was already handed in"
                 }
-                // Most likely handed in already, somewhere the widget didn't see; a sync drops it.
-                HandInResult.NotFound -> "Nothing handed in: $name isn't on Teams' Forthcoming or Past due list. ↻ updates the widget."
+                // Both open tabs read in full, and it's on neither: as a sync would, drop it. Not
+                // remembered as handed in, so were that wrong, the next look at its list restores it.
+                HandInResult.NotListed -> {
+                    store.markHandedIn(target.key)
+                    backToWidget = true
+                    "Nothing pressed: $name is on neither Forthcoming nor Past due, so it's taken as handed in."
+                }
+                // It couldn't all be read in full; a sync (↻) settles it.
+                HandInResult.NotFound -> "Nothing handed in: couldn't find $name on Teams' Forthcoming or Past due list. ↻ updates the widget."
                 HandInResult.NoButton -> {
                     dumper.saveFailureDump()
                     "Nothing handed in: Teams showed no Hand in button for $name."
@@ -311,7 +328,7 @@ class TeamsAutomationService : AccessibilityService() {
             }
         }
         // Back to the widget, which no longer lists it. Otherwise Teams stays open on what happened.
-        if (handedIn && device.foregroundPackage() == TeamsSelectors.TEAMS_PACKAGE) device.home()
+        if (backToWidget && device.foregroundPackage() == TeamsSelectors.TEAMS_PACKAGE) device.home()
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
@@ -354,7 +371,8 @@ class TeamsAutomationService : AccessibilityService() {
             return
         }
         elsewhereAt = null
-        val sighting = observer.look(root, SystemClock.elapsedRealtime()) ?: return
+        val sighting = observer.look(root, SystemClock.elapsedRealtime(), System.currentTimeMillis(), store.state.value.assignments)
+            ?: return
         val handedInLately = recentlyHandedIn()
         var changes = emptyList<String>()
         store.applyObserved { saved ->

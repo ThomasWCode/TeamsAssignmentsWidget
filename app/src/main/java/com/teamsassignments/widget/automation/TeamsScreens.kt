@@ -96,6 +96,42 @@ object TeamsScreens {
         return cards
     }
 
+    /** Which ends of the selected tab's list are on screen, going by the bounds of the list itself. */
+    data class ListInView(val top: Boolean, val bottom: Boolean)
+
+    fun listInView(root: UiNode): ListInView? {
+        val list = listNode(root) ?: return null
+        val view = viewport(root)
+        return ListInView(top = list.bounds.top > view.top, bottom = list.bounds.bottom < view.bottom)
+    }
+
+    /**
+     * Whether the tree holds the whole of the selected tab's list, so that one look sees every
+     * card: at each end the list runs off screen, the rows beyond it are in the tree. Teams keeps
+     * every row there, reporting those out of view with zero height at the edge they're past (at
+     * the top once scrolled past, at the bottom until reached), so this holds scrolled or not. A
+     * list that only held the rows in view, as a virtualised one would, has to be scrolled through.
+     */
+    fun wholeListInTree(root: UiNode): Boolean {
+        val list = listNode(root) ?: return false
+        val view = viewport(root)
+        val ends = listInView(root) ?: return false
+        // The list's own rows (date groups, the Past due footer) and its cards.
+        val rows = list.children + list.walk().filter { TeamsSelectors.CARD_ID.matches(it.viewId) }
+        val top = ends.top || rows.any { it.bounds.isEmpty && it.bounds.bottom <= view.top }
+        val bottom = ends.bottom || rows.any { it.bounds.isEmpty && it.bounds.top >= view.bottom }
+        return top && bottom
+    }
+
+    /** The list holding the cards; with no cards to go by, the first list on the page. */
+    private fun listNode(root: UiNode): UiNode? {
+        val lists = root.walk().filter { it.className.endsWith(TeamsSelectors.LIST_CLASS) }
+        return lists.firstOrNull { list -> list.walk().any { TeamsSelectors.CARD_ID.matches(it.viewId) } } ?: lists.firstOrNull()
+    }
+
+    /** The part of the page on screen: its scrolling area, the WebView. */
+    private fun viewport(root: UiNode): IntRect = (root.walk().firstOrNull { it.isScrollable } ?: root).bounds
+
     fun findCard(root: UiNode, id: String): UiNode? =
         root.walk().firstOrNull { it.viewId == id && TeamsSelectors.CARD_ID.matches(it.viewId) }
 

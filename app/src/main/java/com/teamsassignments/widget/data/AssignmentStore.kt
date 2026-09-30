@@ -63,7 +63,7 @@ class AssignmentStore(
         )
     }
 
-    /** Drops an assignment that has just been handed in. The sync time and status are kept. */
+    /** Drops an assignment that has just been handed in, or is taken as handed in. The sync time and status are kept. */
     suspend fun markHandedIn(key: String) = update { state ->
         state.copy(assignments = state.assignments.filterNot { it.key == key })
     }
