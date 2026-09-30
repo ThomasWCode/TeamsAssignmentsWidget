@@ -36,6 +36,7 @@ interface UiNode {
     val isClickable: Boolean
     val isScrollable: Boolean
     val isSelected: Boolean
+    val isEnabled: Boolean
     val children: List<UiNode>
 
     fun perform(action: UiAction): Boolean

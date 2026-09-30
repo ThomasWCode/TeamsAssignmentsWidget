@@ -6,7 +6,8 @@ import kotlinx.coroutines.delay
 /**
  * A scripted phone that serves the Phase 0 fixtures: each tab shows its captured list, a card
  * opens its captured detail screen, and Back returns to the list. Taps and click actions both
- * work by default; hooks simulate the ways a real run goes wrong.
+ * work by default, and Hand in's click action switches to the derived handed-in screen; hooks
+ * simulate the ways a real run goes wrong.
  */
 class FakeTeamsDevice(
     private val lists: Map<Tab, String> = mapOf(
@@ -29,10 +30,13 @@ class FakeTeamsDevice(
     var backPresses = 0
     var teamsInstalled = true
 
-    /** View ids that got a click action. */
+    /** View ids that got a click action, or the label of a node without one (`HAND IN`). */
     val clicked = mutableListOf<String>()
 
-    /** Tap points, and the view id of the tab or card under each ("" for neither). */
+    /**
+     * Tap points, and the view id of the tab or card under each, or on a detail screen the label
+     * of the button under it ("" for none of these).
+     */
     val tapped = mutableListOf<Pair<Int, Int>>()
     val tappedTargets = mutableListOf<String>()
 
@@ -61,6 +65,15 @@ class FakeTeamsDevice(
 
     /** Detail screens to show instead of the captured ones, by card id. */
     val detailOverrides = mutableMapOf<String, String>()
+
+    /** Cards handed in with the Hand in button, in order. */
+    val handedIn = mutableListOf<String>()
+
+    /** Whether Hand in's click action works; when it does, the detail screen shows the work handed in. */
+    var handInWorks = true
+
+    /** How many more Hand in click actions report failure and do nothing, as for a stale node. */
+    var failHandInClicks = 0
 
     /**
      * After Back, the list slides in: shifted by this many pixels for this long. On the phone it
@@ -154,7 +167,12 @@ class FakeTeamsDevice(
             return false
         }
         val list = screen as? Screen.List
-        if (list == null) {
+        val detail = screen as? Screen.Detail
+        if (detail != null) {
+            // Recorded, so a test can tell a tap on a toolbar button apart; it does nothing here.
+            val button = teamsRoot()?.walk()?.firstOrNull { it.className.endsWith("Button") && it.bounds.contains(x, y) }
+            tappedTargets += button?.label?.trim().orEmpty()
+        } else if (list == null) {
             tappedTargets += ""
         } else {
             val root = listOnScreen(list.tab)
@@ -187,11 +205,12 @@ class FakeTeamsDevice(
     }
 
     private fun click(node: FakeNode): Boolean {
-        clicked += node.viewId
+        clicked += node.viewId.ifEmpty { node.label.trim() }
         Tab.entries.firstOrNull { it.viewId == node.viewId }?.let {
             if (swallowTabClicks > 0) swallowTabClicks-- else showTab(it)
             return true
         }
+        (screen as? Screen.Detail)?.let { return clickOnDetail(node, it) }
         val list = screen as? Screen.List ?: return false
         if (!TeamsSelectors.CARD_ID.matches(node.viewId)) return false
         val swallow = swallowClicks[node.viewId] ?: 0
@@ -207,6 +226,20 @@ class FakeTeamsDevice(
         // The Galaxy S24 the fixtures were captured on.
         const val SCREEN_WIDTH = 1080
         const val SCREEN_HEIGHT = 2340
+    }
+
+    /** Only Hand in does anything on a detail screen. */
+    private fun clickOnDetail(node: FakeNode, detail: Screen.Detail): Boolean {
+        if (!node.className.endsWith("Button") || !TeamsSelectors.HAND_IN_BUTTON.matches(node.label.trim())) return false
+        if (failHandInClicks > 0) {
+            failHandInClicks--
+            return false
+        }
+        if (handInWorks) {
+            handedIn += detail.id
+            detailOverrides[detail.id] = "detail_${detail.id.take(8)}_handed_in"
+        }
+        return true
     }
 
     private fun open(id: String, from: Tab) {

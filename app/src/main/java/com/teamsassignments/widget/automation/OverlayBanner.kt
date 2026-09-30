@@ -31,7 +31,7 @@ class OverlayBanner(private val service: AccessibilityService) {
 
     val isShowing: Boolean get() = root != null
 
-    /** Shows (or updates) the pill with [message] and an [actionLabel] button. */
+    /** Shows (or updates) the pill with [message] and an [actionLabel] button, or no button if it's empty. */
     fun show(message: String, actionLabel: String, showSpinner: Boolean, onAction: () -> Unit) {
         if (root == null) {
             val view = build()
@@ -41,6 +41,9 @@ class OverlayBanner(private val service: AccessibilityService) {
         label?.text = message
         action?.text = actionLabel
         action?.setOnClickListener { onAction() }
+        action?.visibility = if (actionLabel.isEmpty()) View.GONE else View.VISIBLE
+        // Without the button, the label keeps the pill its usual height and balances its ends.
+        if (actionLabel.isEmpty()) label?.setPadding(dp(12), dp(10), dp(12), dp(10)) else label?.setPadding(dp(12), 0, dp(8), 0)
         spinner?.visibility = if (showSpinner) View.VISIBLE else View.GONE
     }
 
