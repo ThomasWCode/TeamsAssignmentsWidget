@@ -51,10 +51,11 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
     data class OpenLists(val ids: Set<String>, val movedFrom: Long, val movedTo: Long)
 
     /**
-     * What [merge] made of a sighting: the new list, a line per change for the log, the keys it
-     * removed because Teams showed them handed in, and those it took as handed in for being on
-     * neither open list. Only the first are remembered as handed in: were the second wrong, the
-     * next look at the list that does show them would bring them back.
+     * What [merge] made of a sighting: the new list, a line per change for the log, the keys Teams
+     * showed as handed in (whether or not they were still listed, less those already remembered),
+     * and those it took as handed in for being on neither open list. Only the former are
+     * remembered as handed in: were the latter wrong, the next look at the list that does show
+     * them would bring them back.
      */
     data class Merged(
         val assignments: List<Assignment>,
@@ -275,9 +276,11 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 // is an open tab's, not yet replaced after a tab switch, and proves nothing.
                 val completed = sighting.tab == Tab.Completed && !TeamsSelectors.CARD_DUE_LINE.containsMatchIn(card.dueLine)
                 if (card.isHandedIn || completed) {
+                    // Remembered even when it's no longer listed (taken as handed in, say), so a list
+                    // Teams hasn't refreshed can't add it back.
+                    if (card.id !in recentlyHandedIn) handedIn += card.id
                     if (index >= 0) {
                         changes += if (card.isHandedIn) "\"${out[index].title}\" handed in" else "\"${out[index].title}\" is on Completed"
-                        handedIn += card.id
                         out.removeAt(index)
                     }
                     continue
@@ -382,9 +385,12 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
 
             if (match == null) {
                 // Open work the list hasn't shown yet, say from a Teams notification: add it once
-                // there's enough to show, and let the list swap in its GUID when it's seen there.
+                // there's enough to show, and let the list swap in its GUID when it's seen there. Not
+                // while a same-titled row could be this class's (another week's, or one of unknown
+                // class): that is left to the list, where cards have GUIDs.
                 val open = detail.status?.let(TeamsSelectors.DETAIL_NOT_HANDED_IN_STATUS::matches) == true
-                if (sameTitle.isNotEmpty() || !open || className == null || dueAt == null) return unchanged
+                if (!open || className == null || dueAt == null) return unchanged
+                if (sameTitle.any { it.className.isEmpty() || classMatches(it.className, className) }) return unchanged
                 val added = Assignment(
                     key = Assignment.fallbackKey(className, title),
                     title = title,

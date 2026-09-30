@@ -171,7 +171,21 @@ class TeamsObserverTest {
         val merged = merge(TeamsObserver().see("list_completed"), saved)
         assertEquals(listOf(physics), merged.assignments.map { it.key })
         assertEquals(listOf("\"${handedIn.title}\" handed in"), merged.changes)
-        assertEquals(listOf(handedIn.id), merged.handedIn)
+        assertTrue(handedIn.id in merged.handedIn)
+    }
+
+    @Test
+    fun `remembers what Completed shows, even once it's off the list`() {
+        // Codex review: work already taken as handed in, then seen on Completed, is remembered
+        // too, or a list Teams hasn't refreshed could add it back.
+        val cards = TeamsScreens.cards(Fixtures.load("list_completed"))
+        val merged = merge(TeamsObserver().see("list_completed"), emptyList())
+        assertTrue(merged.assignments.isEmpty())
+        assertTrue(merged.changes.isEmpty())
+        assertEquals(cards.map { it.id }.toSet(), merged.handedIn.toSet())
+        // Those already remembered aren't reported again.
+        val again = merge(TeamsObserver().see("list_completed"), emptyList(), recentlyHandedIn = merged.handedIn.toSet())
+        assertTrue(again.handedIn.isEmpty())
     }
 
     @Test
@@ -191,7 +205,7 @@ class TeamsObserverTest {
             Assignment(key = physics, title = "Particle Physics Test", className = "12.2-PH3")
         val merged = merge(TeamsObserver().see("list_completed"), saved)
         assertEquals(listOf(physics), merged.assignments.map { it.key })
-        assertEquals(listOf(submitted.id, closed.id), merged.handedIn)
+        assertTrue(merged.handedIn.containsAll(listOf(submitted.id, closed.id)))
         assertTrue(merged.presumed.isEmpty())
     }
 
@@ -205,7 +219,9 @@ class TeamsObserverTest {
         assertNull(observer.lookAt(stale, 5_000))
         // Even with the switch unseen, a card showing a due line isn't one of Completed's own.
         val saved = merge(TeamsObserver().see("list_forthcoming"), emptyList()).assignments
-        assertEquals(saved, merge(TeamsObserver().see("list_completed_stale_rows"), saved).assignments)
+        val merged = merge(TeamsObserver().see("list_completed_stale_rows"), saved)
+        assertEquals(saved, merged.assignments)
+        assertTrue(merged.handedIn.isEmpty())
     }
 
     // Taken as handed in for being on neither open tab
@@ -406,6 +422,25 @@ class TeamsObserverTest {
         assertEquals(listOf(lastWeek), opened.assignments)
         assertTrue(opened.changes.isEmpty())
         assertEquals(listOf(lastWeek), merge(TeamsObserver().see("detail_4c958b24_handed_in"), listOf(lastWeek)).assignments)
+    }
+
+    @Test
+    fun `adds same-titled work from a plainly different class`() {
+        // Codex review: a generic title recurs across classes, and the toolbar names this one's.
+        val otherClass = Assignment(
+            key = "11111111-2222-3333-4444-555555555555", title = "Particle Physics Test",
+            className = "Chemistry 12.1-CH2", dueAt = millis("2026-09-29T07:30:00Z"),
+        )
+        val opened = merge(TeamsObserver().see("detail_4c958b24"), listOf(otherClass))
+        assertEquals(
+            listOf(otherClass.key, Assignment.fallbackKey("12.2-PH3", "Particle Physics Test")),
+            opened.assignments.map { it.key },
+        )
+        assertEquals(listOf("added \"Particle Physics Test\""), opened.changes)
+
+        // One of unknown class might be this one's, another week's: that's left to the list.
+        val unknownClass = otherClass.copy(className = "", dueAt = millis("2026-09-22T07:30:00Z"))
+        assertEquals(listOf(unknownClass), merge(TeamsObserver().see("detail_4c958b24"), listOf(unknownClass)).assignments)
     }
 
     @Test
