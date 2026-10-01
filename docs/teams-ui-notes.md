@@ -102,7 +102,8 @@ Toolbar (native)
   ImageButton #overflow_menu_button cd='Back'
   TextView #action_bar_title_text       ← CLASS NAME
   TextView #action_bar_sub_title_text   ← "Assignments"
-  Button "HAND IN" / "HAND IN LATE"     ← only the hand-in workflow presses it; "UNDO HAND-IN" once handed in
+  Button "HAND IN" / "HAND IN LATE"     ← only the hand-in workflow presses it; "UNDO HAND-IN" once handed in,
+                                          "HAND IN AGAIN" once that is undone (not matched yet)
 WebView
   View #assignmentViewerVisibilityContainer   ← detail-screen marker
     TextView "Not handed in"                  ← status
@@ -167,7 +168,7 @@ Findings from running the service itself, after Phase 0:
 - `ACTION_SHOW_ON_SCREEN` does scroll an off-screen card into view, so it can then be tapped.
 - **Screens slide in, and the tree reports them mid-slide.** Just after Back from an assignment, a failure dump caught the whole list window at `[-337,0][743,2340]` instead of `[0,0][1080,2340]`. A tap taken from that snapshot pointed at x = -126, which `GestureDescription` rejects outright. Taps therefore wait for their target to be at rest: the same bounds twice in a row, in a window that isn't offset (`TeamsScreens.windowAtRest`). Captured as `list_past_due_mid_transition`.
 - **"Due earlier today"** is Past due's label for work that passed its time earlier the same day (an 08:00 homework, seen at 08:56). Captured as `list_past_due_earlier_today`.
-- **Work that fell due earlier today is listed on both tabs.** Syncs at 11:16 and 13:20 found 8 + 5 and 9 + 5 open cards but only 11 and 12 different ones. The two on both tabs were the day's 08:00 and 09:00 homework, still under Forthcoming's "Today" while Past due listed them as "Due earlier today". The sync keys cards by GUID, so each counts once, under Past due. This is inferred from the counts; no Forthcoming capture from such a time exists yet.
+- **Work that fell due earlier today is listed on both tabs.** Syncs at 11:16 and 13:20 found 8 + 5 and 9 + 5 open cards but only 11 and 12 different ones. The two on both tabs were the day's 08:00 and 09:00 homework, still under Forthcoming's "Today" while Past due listed them as "Due earlier today". The sync keys cards by GUID, so each counts once, under Past due. First inferred from the counts, then captured on 1 Oct as `list_forthcoming_earlier_today`: at 12:15 an 08:30 homework sat under Forthcoming's `1 Oct` / `Today` while Past due listed it as `Due earlier today`.
 - **While the Assignments module loads, the WebView is empty.** A capture just after launch showed Teams' toolbar over a WebView with no children: no tabs, no cards and no spinner. It isn't mistaken for an empty list, because a list needs its tabs. Captured as `list_assignments_loading`.
 - **Forthcoming's "Next week" divider isn't in the tree.** Teams draws it between this week's date groups and later ones, but the accessibility tree holds only the usual groups (`5 Oct` / `Monday`).
 - **`uiautomator dump` switches accessibility services off while it runs.** The service logged "Service disconnected", then reconnected about a second later. A dump taken during a sync would end it, so use the app's **Dump Teams screen** mid-run, and adb dumps only while nothing is syncing.
@@ -177,8 +178,7 @@ Not yet seen, and worth capturing with **Dump Teams screen** when they turn up:
 
 - An **empty** Forthcoming or Past due tab. For now an empty list is believed only after holding for 2 s (6 s if that tab had work at the last sync) with no loading indicator.
 - What Teams shows **while a tab loads** after a switch. (The whole module loading at launch is captured, above.) A spinner surfaces as a `ProgressBar` node, and an exact "Loading" label is also treated as loading.
-- An **on-time** hand-in's status. Only a late one has been captured (below); the check accepts any status starting `Handed in`, `Turned in` or `Submitted`.
-- A detail screen opened **from a Teams notification**, rather than from the list. Reading along only trusts its toolbar title as the class name while the subtitle reads `Assignments`.
+- A detail screen opened **from a system notification**. One opened from Teams' Activity feed has been captured (see [Found on the way](#found-on-the-way)); a notification very likely opens the same screen, but that hasn't been seen.
 
 Some test fixtures are **derived** from the captures rather than captured: `list_past_due_with_moved_cards`, `list_past_due_stale_rows`, `list_completed_stale_rows`, `list_past_due_completed_rows`, `list_past_due_empty`, `list_past_due_loading`, `list_forthcoming_single`, `list_past_due_single_moved`, `list_forthcoming_virtualised` (with `_scrolled` and `_end`), `detail_unreadable`, `detail_4c958b24_handed_in`, `detail_88fafeb2_handed_in`, `detail_4c958b24_hand_in_disabled` and `detail_4c958b24_prefix_title`. Each builds a state that's hard to catch live (a card on both tabs, a tab selected before its rows load or still showing another tab's, an empty or loading list, a single card moving tabs, an unreadable detail screen, a same-named assignment's screen whose title only starts the chosen one's), seen only once (a handed-in detail screen, carried over from the captured `detail_f63a23c9_handed_in` to other assignments), or not seen at all (a greyed-out Hand in button, a list holding only the rows in view), by editing a real capture. [`scripts/derive_fixtures.py`](../scripts/derive_fixtures.py) regenerates them after fresh captures.
 
@@ -195,25 +195,34 @@ Some test fixtures are **derived** from the captures rather than captured: `list
 
 ## Deferred live tests
 
-Everything added since that run passes the unit tests, against the captures and the fixtures derived from them, but hasn't been checked on the phone yet. These checks are deferred to the next session with the phone. A hand-in check really hands the work in, so run those only on work that's ready.
+These were the checks left over from the 0.2.0 run. They ran on the phone on 2026-10-01, on a build of `main` (`edea024`). For the checks that need work handed in elsewhere, "Text - LESEN" was handed in and undone on a PC, three times.
 
-To run:
+- [x] **Taken as handed in while reading along.** With only Past due open, nothing went. Forthcoming, opened 10 min 50 s later, took nothing either. Past due again, 9 s after that, took the row, and the log read `Seen in Teams: "Text - LESEN" is on neither Forthcoming nor Past due: taken as handed in`. Nothing was remembered as handed in.
+- [x] **Nothing taken on too little.** Both halves, as above: one tab on its own, and the two tabs more than 10 minutes apart.
+- [x] **Brought back.** With the hand-in undone on the PC and Teams refreshed, Past due logged `Seen in Teams: added "Text - LESEN"`. It comes back without its instructions, until it's opened or synced.
+- [x] **Taken as handed in by a row tap or a hand-in.** Each read both tabs, found the card on neither and pressed nothing. The log read `"Text - LESEN" taken as handed in` after the row tap, and `Hand-in result: NotListed` after the hand-in. Neither toast showed (see below).
+- [x] **Cancel.** Cancel was tapped 0.7 s after confirming, while Teams was still opening: `Hand-in stopped: Cancelled`, nothing pressed, and Teams still listed the work as not handed in. The toast didn't show. A Cancel timed to the very moment of the press hasn't been tried; nobody can tap that reliably.
+- [x] **Hand in on time.** `HAND IN` took the click action, and Teams showed the work handed in 0.8 s later ("Hausaufgabe: 5 facts "Familie"", undone in Teams straight after). The status read `Handed in Thu 1 Oct 2026 at 12:33`, captured as `detail_3a5b3795_handed_in`.
+- [x] **Instructions saved after a row tap.** `Seen in Teams: read "…"` came 1.4 s after the row tap opened the assignment, with no touch.
+- [x] **Looks resume after other screens.** Chat, then Assignments 3 s later, then an assignment: its details were read. Teams' Chat list stood in for a chat, to leave the unread marks alone.
+- [ ] **Work from a notification.** Not run as written, as no new assignment arrived. An assignment opened from Teams' Activity feed showed that reading along doesn't look at that screen at all (see below). The Hand in button's answer for work without a Teams id did show: *Sync with ↻ first, so Teams can find this assignment*.
+- [x] **The confirmation dialog** reads well in light and dark themes.
+- [ ] **The Hand in pill as an icon** can't be reached on this phone. On its 4-column grid the widget's narrowest size is 294 dp, above the 250 dp where the icon takes over.
 
-- [ ] **Taken as handed in while reading along.** Hand something in on another device, then open Forthcoming and then Past due on the phone, pausing a couple of seconds on each. Its row goes, and the log reads `Seen in Teams: "…" is on neither Forthcoming nor Past due: taken as handed in`.
-- [ ] **Nothing taken on too little.** Opening only one of the two tabs, or the two more than 10 minutes apart, removes nothing.
-- [ ] **Brought back.** Work taken as handed in that wasn't comes back the next time its list is opened.
-- [ ] **Taken as handed in by a row tap or a hand-in**, on work handed in elsewhere. The toast reads *Taken as handed in: …* after a row tap, or *Nothing pressed: … is on neither Forthcoming nor Past due, so it's taken as handed in.* after a hand-in. The run above predates this and got *couldn't find*.
-- [ ] **Cancel at the last moment.** Tap Hand in, confirm, then tap Cancel on the pill straight away. The toast reads *Hand-in cancelled. Nothing was handed in.*, and Teams still shows the work as not handed in.
-- [ ] **Hand in on time.** Only `HAND IN LATE` has been pressed live, never `HAND IN`.
-- [ ] **Instructions saved after a row tap.** Tap a row, then read the assignment without touching the screen. The log gains `Seen in Teams: read "…"`.
-- [ ] **Looks resume after other screens.** Open a chat in Teams, go back to Assignments within a few seconds, and open an assignment not read before. Its instructions are still saved.
-- [ ] **Work from a notification.** A new assignment opened from a Teams notification is added, and gets its GUID the next time its list is seen. Until then its Hand in button answers *Sync with ↻ first, so Teams can find this assignment*.
-- [ ] **The widget's Hand in pill** at narrow widths (an icon below 250 dp), and the confirmation dialog in light and dark themes. So far these have only been rendered off-device.
+### Found on the way
 
-Too rare to set up; worth a capture with **Dump Teams screen** if one turns up:
+- **The service's toasts never show.** Each one drew this in logcat: `E/NotificationService: Suppressing toast from package com.teamsassignments.widget by user request.` The app holds no notification permission (it declares none), and Android drops toasts from an app in the background whose notifications are off. The service is in the background whenever it toasts, so every outcome it reports that way is lost: *Handed in …*, *Taken as handed in …*, *Hand-in cancelled …*, *Couldn't find …* and the reasons a hand-in stopped. A toast from the widget's own activity does show (the *Sync with ↻ first* answer), since that activity is in front at the time. There's no setting to switch on; the outcome needs showing another way, such as on the service's own overlay.
+- **Once a hand-in is undone, the button reads `HAND IN AGAIN`**, on time or late (`detail_3a5b3795_hand_in_again`, `detail_d3f67007_hand_in_again`). The matcher takes only `HAND IN` and `HAND IN LATE`, so a hand-in from the widget ends with `"…" has no Hand in button to press`, presses nothing and saves a failure dump. With the toast lost too, Teams is simply left open on the assignment.
+- **Opened from the Activity feed, a detail screen has no `Assignments` subtitle.** Its toolbar holds the class name as the title, the Hand in button and a `More options` button (`js_overflow`), and nothing else (`detail_885e3273_from_activity`). The cheap check that decides whether to look at Teams wants `Assignments` in the title or the subtitle, so reading along never looks at this screen: an assignment opened this way is neither read nor added.
+- **Teams doesn't refetch its lists by itself.** After a change on another device, the Assignments tab went on showing its old rows, and pulling down did nothing. ⋮ → Refresh reloads it, with the WebView blank for a few seconds. A row tap, a hand-in and a sync open Assignments by its link, and each time that list was up to date: a sync two minutes after an undo on the PC found the work without a refresh.
+- **Undoing a hand-in the widget made** leaves the row without its Teams id for a while. The undone screen reads `Not handed in`, so reading along adds it back from there, keyed by class and title. The list can't then give it its GUID, since the widget's own hand-in is remembered for 12 hours. Its Hand in button answers *Sync with ↻ first*, and a sync does restore the GUID.
+- **The Assignments tab in Teams' main screen** differs from the one the link opens: a `Navigation` avatar button in place of Back, and Teams' bottom bar under the WebView (`list_forthcoming_earlier_today`). Reading along works in both.
+- One tap on ↻ sent over adb never reached the launcher (it logged no click). The next one did. Nothing in the app was involved.
+
+Still worth a capture with **Dump Teams screen** if one turns up:
 
 - a hand-in that stops because the screen Teams opened wasn't exactly the assignment's;
-- a hand-in with no Hand in button, or one Teams doesn't confirm within 20 s;
+- a hand-in Teams doesn't confirm within 20 s;
 - a slow Teams launch during a hand-in, which now has the hand-in's 45 s, not 25 s, to find the assignment;
 - a copy of Assignments that fails, and is retried;
 - a newly selected tab still showing the last tab's cards after a spinner;

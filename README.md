@@ -125,12 +125,17 @@ scripts/       derive_fixtures.py: builds the edge-case fixtures from the captur
 - the service switched off and back on;
 - light and dark themes;
 - resizing down to the launcher's smallest size, 3×2;
-- handing in from the widget (a late one), and reading along while Teams is open: instructions saved on opening an assignment, and an assignment handed in within Teams taken off the list.
+- handing in from the widget, late and on time, and cancelling one;
+- reading along while Teams is open: instructions saved on opening an assignment, from the list or after a row tap, and an assignment handed in within Teams taken off the list;
+- work handed in on another device: taken off once both open lists have been seen close together (and not on one list alone, or on two seen more than 10 minutes apart), taken off by a row tap or a hand-in that finds it on neither, and brought back once the hand-in is undone.
 
-**Deferred:** nothing added since then has been checked on the phone yet. That includes taking work on neither open list as handed in, and the fixes from review. The checks are listed under [Deferred live tests](docs/teams-ui-notes.md#deferred-live-tests).
+The 1 October run, and what it turned up, is under [Deferred live tests](docs/teams-ui-notes.md#deferred-live-tests). **Not checked:** work opened from a Teams notification, and the Hand in pill's icon form (below 250 dp, narrower than this phone's launcher allows).
 
 ## Known limitations
 
 - **Tied to the Teams app's layout and English (en-GB) wording.** An update to Teams can break syncing until `TeamsSelectors.kt` is updated.
 - **Takes over the screen while syncing** and while handing in. Syncing is manual only, and doesn't run while the phone is locked; browsing Assignments in Teams updates the list without taking over. The widget still redraws at midnight and as deadlines pass, from saved data, so "Today" and "Overdue" stay right.
 - Assignments you've handed in, and anything older than Teams' *Past due* list, aren't shown.
+- **A row tap or hand-in reports nothing when it ends.** The service says how each went with a toast, and Android drops toasts from an app in the background that has no notification permission. The widget and Teams still show what happened.
+- **Work whose hand-in was undone can't be handed in from the widget.** Teams' button then reads *Hand in again*, which isn't matched yet.
+- **An assignment opened from Teams' Activity feed isn't read**: that screen lacks the *Assignments* subtitle reading along looks for. Opening it from the Assignments list, or a sync, picks it up.
