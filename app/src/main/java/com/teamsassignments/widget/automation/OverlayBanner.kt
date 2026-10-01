@@ -20,6 +20,10 @@ import android.widget.TextView
  * A pill drawn over Teams in a `TYPE_ACCESSIBILITY_OVERLAY` window, which an accessibility
  * service may add without the overlay permission. It sits over Teams' toolbar: the automation
  * never touches that area, and it keeps stray touches off the Hand in button.
+ *
+ * It also says how a row tap or hand-in went ([showMessage]), near the bottom of the screen, as
+ * a toast would. A toast itself can't: Android drops one from an app in the background that has
+ * no notification permission, and the service is in the background whenever it has news.
  */
 class OverlayBanner(private val service: AccessibilityService) {
 
@@ -28,14 +32,17 @@ class OverlayBanner(private val service: AccessibilityService) {
     private var label: TextView? = null
     private var action: TextView? = null
     private var spinner: ProgressBar? = null
+    private var isMessage = false
 
     val isShowing: Boolean get() = root != null
 
     /** Shows (or updates) the pill with [message] and an [actionLabel] button, or no button if it's empty. */
     fun show(message: String, actionLabel: String, showSpinner: Boolean, onAction: () -> Unit) {
+        // A message still showing gives way: it sits elsewhere on the screen, and hides itself.
+        if (isMessage) hide()
         if (root == null) {
             val view = build()
-            runCatching { windowManager.addView(view, layoutParams()) }.onFailure { return }
+            runCatching { windowManager.addView(view, layoutParams(atBottom = false)) }.onFailure { return }
             root = view
         }
         label?.text = message
@@ -51,23 +58,48 @@ class OverlayBanner(private val service: AccessibilityService) {
         label?.text = message
     }
 
+    /**
+     * Shows [message] on its own for [MESSAGE_MS], or until it's tapped or the pill is needed
+     * again. It replaces whatever the pill showed.
+     */
+    fun showMessage(message: String) {
+        hide()
+        val view = build()
+        runCatching { windowManager.addView(view, layoutParams(atBottom = true)) }.onFailure { return }
+        root = view
+        isMessage = true
+        spinner?.visibility = View.GONE
+        action?.visibility = View.GONE
+        label?.apply {
+            text = message
+            maxLines = MESSAGE_MAX_LINES
+            maxWidth = service.resources.displayMetrics.widthPixels - dp(72)
+            setPadding(0, dp(8), dp(10), dp(8))
+        }
+        // Only while this is still the view on screen: by then the pill may be showing a run.
+        val dismiss = { if (root === view) hide() }
+        view.setOnClickListener { dismiss() }
+        view.postDelayed({ dismiss() }, MESSAGE_MS)
+    }
+
     fun hide() {
         root?.let { runCatching { windowManager.removeView(it) } }
         root = null
         label = null
         action = null
         spinner = null
+        isMessage = false
     }
 
-    private fun layoutParams() = WindowManager.LayoutParams(
+    private fun layoutParams(atBottom: Boolean) = WindowManager.LayoutParams(
         WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
         PixelFormat.TRANSLUCENT,
     ).apply {
-        gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-        y = dp(44)
+        gravity = (if (atBottom) Gravity.BOTTOM else Gravity.TOP) or Gravity.CENTER_HORIZONTAL
+        y = dp(if (atBottom) 96 else 44)
     }
 
     private fun build(): View {
@@ -114,4 +146,10 @@ class OverlayBanner(private val service: AccessibilityService) {
     }
 
     private fun dp(value: Int): Int = (value * service.resources.displayMetrics.density).toInt()
+
+    private companion object {
+        /** A little longer than a long toast: these run to three lines. */
+        const val MESSAGE_MS = 5_000L
+        const val MESSAGE_MAX_LINES = 4
+    }
 }

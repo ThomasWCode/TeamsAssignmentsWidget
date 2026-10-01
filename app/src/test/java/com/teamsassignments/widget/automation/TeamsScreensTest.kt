@@ -262,6 +262,26 @@ class TeamsScreensTest {
     }
 
     @Test
+    fun `reads Forthcoming in Teams' own Assignments tab, still listing work due earlier today`() {
+        // Captured on 1 Oct at 12:15, from the tab in Teams' bottom bar rather than the link: an
+        // 08:30 homework still under Today, which Past due listed as Due earlier today.
+        val root = Fixtures.load("list_forthcoming_earlier_today")
+        assertTrue(TeamsScreens.isList(root))
+        assertEquals(Tab.Forthcoming, TeamsScreens.selectedTab(root))
+        assertFalse(TeamsScreens.isLoading(root))
+        assertTrue(TeamsScreens.wholeListInTree(root))
+        val cards = TeamsScreens.cards(root)
+        assertEquals(7, cards.size)
+        with(cards.first()) {
+            assertEquals("66fcdab0-2ed3-44b9-9ea3-3fba18d79567", id)
+            assertEquals("Gefahren in den sozialen Netzwerken. Vor- und Nachteile", title)
+            assertEquals("1 Oct", headerDate)
+            assertEquals("Today", headerLabel)
+            assertEquals("Due at 08:30", dueLine)
+        }
+    }
+
+    @Test
     fun `reads work that fell due earlier today`() {
         // Captured on the phone at 08:56: the 08:00 homework had moved from Forthcoming to Past due.
         val cards = cards("list_past_due_earlier_today")
@@ -443,6 +463,59 @@ class TeamsScreensTest {
         assertNull(TeamsScreens.handInButton(root))
         assertTrue(TeamsScreens.offersUndoHandIn(root))
         assertTrue(TeamsScreens.classInToolbar(root))
+    }
+
+    @Test
+    fun `reads the screens the phone showed around a hand-in that was undone`() {
+        // Captured on 1 Oct: handed in on time from the widget, then undone in Teams.
+        val handedIn = Fixtures.load("detail_3a5b3795_handed_in")
+        with(TeamsScreens.detail(handedIn)!!) {
+            assertEquals("Handed in Thu 1 Oct 2026 at 12:33", status)
+            assertTrue(isHandedIn)
+        }
+        assertNull(TeamsScreens.handInButton(handedIn))
+        assertTrue(TeamsScreens.offersUndoHandIn(handedIn))
+
+        // Undone, the button reads HAND IN AGAIN, whether the work is overdue or not.
+        listOf("detail_3a5b3795_hand_in_again", "detail_d3f67007_hand_in_again").forEach { fixture ->
+            val root = Fixtures.load(fixture)
+            val button = assertNotNull(TeamsScreens.handInButton(root), fixture)
+            assertEquals("HAND IN AGAIN", button.text, fixture)
+            assertTrue(button.isEnabled, fixture)
+            assertFalse(TeamsScreens.offersUndoHandIn(root), fixture)
+            with(TeamsScreens.detail(root)!!) {
+                assertEquals("Not handed in", status, fixture)
+                assertFalse(isHandedIn, fixture)
+            }
+        }
+    }
+
+    @Test
+    fun `reads a detail screen opened from the Activity feed, which has no subtitle`() {
+        // Captured on 1 Oct: the toolbar holds the class name, Hand in and More options, no more.
+        val root = Fixtures.load("detail_885e3273_from_activity")
+        assertNull(root.findById(TeamsSelectors.TOOLBAR_SUBTITLE))
+        assertTrue(TeamsScreens.isDetail(root))
+        assertTrue(TeamsScreens.classInToolbar(root))
+        with(TeamsScreens.detail(root)!!) {
+            assertEquals("Ms Cloud year 12 2026/27", className)
+            assertEquals("Soziale Netzwerke. Fluch oder Segen?", title)
+            assertEquals("Not handed in", status)
+            assertEquals("Due 6 October 2026 08:30", dueText)
+            assertTrue(instructions.startsWith("Hausaufgaben"), instructions)
+        }
+        assertEquals("HAND IN", TeamsScreens.handInButton(root)?.text)
+    }
+
+    @Test
+    fun `a toolbar titled Assignments names no class, subtitle or none`() {
+        // The list's toolbar, as the link opens it and as Teams' own Assignments tab shows it.
+        listOf("list_forthcoming", "list_forthcoming_earlier_today").forEach {
+            assertFalse(TeamsScreens.classInToolbar(Fixtures.load(it)), it)
+        }
+        // Nor does a detail screen's, should Teams ever title one that way.
+        val titled = node("", children = listOf(node("Assignments", id = TeamsSelectors.TOOLBAR_TITLE), node("", id = TeamsSelectors.DETAIL_CONTAINER)))
+        assertFalse(TeamsScreens.classInToolbar(titled))
     }
 
     @Test

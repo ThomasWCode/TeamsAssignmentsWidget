@@ -54,4 +54,29 @@ class LookPacerTest {
         pacer.looked(Outcome.Failed, 0)
         assertTrue(pacer.owed)
     }
+
+    @Test
+    fun `a page it can't place gets a few quick looks, then waits like anywhere else`() {
+        // On the phone, an assignment opened from the Activity feed took a second or two to load.
+        // Taken for elsewhere at the first look, it was read five seconds late.
+        val pacer = LookPacer()
+        pacer.looked(Outcome.Elsewhere, 0) // the Activity feed
+        assertTrue(pacer.shouldLook(500, screenChanged = true))
+        repeat(4) { i ->
+            pacer.looked(Outcome.Unsure, 500L + 700 * i)
+            assertTrue(pacer.owed)
+            assertTrue(pacer.shouldLook(1_200L + 700 * i, screenChanged = false))
+        }
+        // Still unplaced at the fifth look: some other app's page, checked like a chat from now on.
+        pacer.looked(Outcome.Unsure, 3_300)
+        assertFalse(pacer.owed)
+        assertFalse(pacer.shouldLook(4_000, screenChanged = false))
+        assertTrue(pacer.shouldLook(8_300, screenChanged = false))
+        pacer.looked(Outcome.Unsure, 8_300)
+        assertFalse(pacer.shouldLook(9_000, screenChanged = false))
+        // Once it loads as an assignment's, it's read like the rest of Assignments.
+        assertTrue(pacer.shouldLook(13_300, screenChanged = false))
+        pacer.looked(Outcome.Read, 13_300)
+        assertTrue(pacer.shouldLook(14_000, screenChanged = false))
+    }
 }

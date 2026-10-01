@@ -45,7 +45,7 @@ class TeamsObserverTest {
         sighting: Sighting,
         saved: List<Assignment>,
         wallClock: Long = clock.millis(),
-        recentlyHandedIn: Set<String> = emptySet(),
+        recentlyHandedIn: Map<String, Assignment?> = emptyMap(),
     ) = TeamsObserver.merge(sighting, saved, parser, wallClock, recentlyHandedIn)
 
     // Looking
@@ -184,15 +184,29 @@ class TeamsObserverTest {
         assertTrue(merged.changes.isEmpty())
         assertEquals(cards.map { it.id }.toSet(), merged.handedIn.toSet())
         // Those already remembered aren't reported again.
-        val again = merge(TeamsObserver().see("list_completed"), emptyList(), recentlyHandedIn = merged.handedIn.toSet())
+        val again = merge(TeamsObserver().see("list_completed"), emptyList(), recentlyHandedIn = merged.handedIn.associateWith { null })
         assertTrue(again.handedIn.isEmpty())
     }
 
     @Test
     fun `doesn't add back work just handed in, which a list not yet refreshed still shows`() {
-        val merged = merge(TeamsObserver().see("list_forthcoming"), emptyList(), recentlyHandedIn = setOf(physics))
+        val merged = merge(TeamsObserver().see("list_forthcoming"), emptyList(), recentlyHandedIn = mapOf(physics to null))
         assertEquals(6, merged.assignments.size)
         assertTrue(merged.assignments.none { it.key == physics })
+        assertTrue(merged.undone.isEmpty())
+    }
+
+    @Test
+    fun `files work under Past due once its time has passed, though Forthcoming still lists it`() {
+        // Captured on 1 Oct at 12:15: Forthcoming still held that morning's 08:30 homework.
+        val noon = Clock.fixed(Instant.parse("2026-10-01T11:15:00Z"), ZoneId.of("Europe/London"))
+        val merged = TeamsObserver.merge(
+            TeamsObserver().see("list_forthcoming_earlier_today"), emptyList(), DueDateParser(noon), noon.millis(),
+        )
+        assertEquals(7, merged.assignments.size)
+        val overdue = merged.assignments.filter { it.tab == AssignmentTab.PastDue }
+        assertEquals(listOf("66fcdab0-2ed3-44b9-9ea3-3fba18d79567"), overdue.map { it.key })
+        assertEquals(millis("2026-10-01T07:30:00Z"), overdue.single().dueAt)
     }
 
     @Test
@@ -448,6 +462,85 @@ class TeamsObserverTest {
         val detail = assertNotNull(TeamsScreens.detail(Fixtures.load("detail_4c958b24")))
         val merged = merge(Sighting.OnDetail(detail, classInToolbar = false), emptyList())
         assertTrue(merged.assignments.isEmpty())
+    }
+
+    @Test
+    fun `reads an assignment opened from the Activity feed, and adds one that's new`() {
+        // On the phone on 1 Oct this screen wasn't looked at: its toolbar holds the class name
+        // alone, with no Assignments subtitle. It reads like any other.
+        val title = "Soziale Netzwerke. Fluch oder Segen?"
+        val listed = Assignment(
+            key = "885e3273-5cc3-4fe9-a75d-4f65c5585f4f", title = title, className = "Ms Cloud year 12 2026/27",
+            dueAt = millis("2026-10-06T07:30:00Z"),
+        )
+        val read = merge(TeamsObserver().see("detail_885e3273_from_activity"), listOf(listed))
+        assertEquals(listOf("read \"$title\""), read.changes)
+        with(read.assignments.single()) {
+            assertEquals(listed.key, key)
+            assertTrue(description.startsWith("Hausaufgaben"), description)
+        }
+
+        val added = merge(TeamsObserver().see("detail_885e3273_from_activity"), emptyList())
+        assertEquals(listOf("added \"$title\""), added.changes)
+        assertEquals(Assignment.fallbackKey("Ms Cloud year 12 2026/27", title), added.assignments.single().key)
+    }
+
+    // A hand-in undone
+
+    private val facts = Assignment(
+        key = "3a5b3795-5fbb-40f8-8fb2-a2f800777d3d",
+        title = "Hausaufgabe: 5 facts \"Familie\"",
+        className = "German Y12 1-1 Speaking Sessions 2026-27",
+        description = "For this week, learn 5 facts on the topic of \"Die Familie\"",
+        dueAt = Instant.parse("2026-10-05T07:00:00Z").toEpochMilli(),
+        detailReadAt = 1L,
+    )
+
+    @Test
+    fun `brings back work whose hand-in was undone, Teams id and all`() {
+        // On the phone on 1 Oct: handed in from the widget, then undone in Teams. The row came
+        // back from this screen without its Teams id, which the list couldn't then give it.
+        val undone = merge(TeamsObserver().see("detail_3a5b3795_hand_in_again"), emptyList(), recentlyHandedIn = mapOf(facts.key to facts))
+        assertEquals(listOf("\"${facts.title}\" is no longer handed in"), undone.changes)
+        assertEquals(listOf(facts.key), undone.undone)
+        with(undone.assignments.single()) {
+            assertEquals(facts.key, key)
+            assertEquals(facts.description, description)
+            assertEquals("Due 5 October 2026 08:00", dueText)
+            assertEquals(AssignmentTab.Forthcoming, tab)
+        }
+    }
+
+    @Test
+    fun `only brings back the very assignment that was handed in`() {
+        // Weekly work repeats its title and class: another week's, due at another time, isn't it.
+        val lastWeek = facts.copy(dueAt = facts.dueAt!! - 7 * 24 * 3_600_000L)
+        val otherWeek = merge(TeamsObserver().see("detail_3a5b3795_hand_in_again"), emptyList(), recentlyHandedIn = mapOf(facts.key to lastWeek))
+        assertEquals(Assignment.fallbackKey(facts.className, facts.title), otherWeek.assignments.single().key)
+        assertTrue(otherWeek.undone.isEmpty())
+
+        // Nor is anything brought back from a screen still showing the work as handed in.
+        val stillIn = merge(TeamsObserver().see("detail_3a5b3795_handed_in"), emptyList(), recentlyHandedIn = mapOf(facts.key to facts))
+        assertTrue(stillIn.assignments.isEmpty())
+        assertTrue(stillIn.undone.isEmpty())
+    }
+
+    @Test
+    fun `the list gives a row its Teams id once its own screen has shown the hand-in undone`() {
+        // Work seen on Completed is remembered by its id alone, so its own screen can only add it
+        // back without one. The list then supplies the id, and the hand-in is forgotten.
+        val remembered = mapOf<String, Assignment?>(physics to null)
+        val fromDetail = merge(TeamsObserver().see("detail_4c958b24"), emptyList(), recentlyHandedIn = remembered)
+        assertEquals(Assignment.fallbackKey("12.2-PH3", "Particle Physics Test"), fromDetail.assignments.single().key)
+        assertTrue(fromDetail.undone.isEmpty())
+
+        val fromList = merge(TeamsObserver().see("list_forthcoming"), fromDetail.assignments, recentlyHandedIn = remembered)
+        assertEquals(7, fromList.assignments.size)
+        assertEquals(listOf(physics), fromList.undone)
+        with(fromList.assignments.single { it.key == physics }) {
+            assertTrue(description.startsWith("1) Use results"), description)
+            assertNotNull(detailReadAt)
+        }
     }
 
     @Test
