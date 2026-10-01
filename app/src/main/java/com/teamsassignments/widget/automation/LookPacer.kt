@@ -7,7 +7,10 @@ package com.teamsassignments.widget.automation
  *   next comes when Teams opens another screen, or after [recheckMs]; a change held back meanwhile
  *   is [owed] its look, which comes then even if Teams has gone quiet;
  * - a look that found Assignments but couldn't copy it (the tree changing underneath, or too big)
- *   is owed another, up to [maxFailures] in a row, and doesn't count as elsewhere.
+ *   is owed another, up to [maxFailures] in a row, and doesn't count as elsewhere;
+ * - so is one that found an app's page it couldn't place. An assignment opened from Teams'
+ *   Activity feed is such a page until it has loaded, a second or two on the phone. After that
+ *   many looks in a row, the page is some other app's, and counts as elsewhere.
  */
 class LookPacer(private val recheckMs: Long = 5_000, private val maxFailures: Int = 5) {
 
@@ -20,6 +23,9 @@ class LookPacer(private val recheckMs: Long = 5_000, private val maxFailures: In
 
         /** Teams was showing Assignments, but it couldn't be read. */
         Failed,
+
+        /** Teams was showing an app's page that isn't an assignment's, or isn't yet. */
+        Unsure,
     }
 
     private var elsewhereAt: Long? = null
@@ -34,6 +40,9 @@ class LookPacer(private val recheckMs: Long = 5_000, private val maxFailures: In
      * Teams has opened another screen since the last look.
      */
     fun shouldLook(now: Long, screenChanged: Boolean): Boolean {
+        // Another screen starts the count afresh: it may be an assignment's, opened from a page
+        // that had used up its looks.
+        if (screenChanged) failures = 0
         val lastElsewhere = elsewhereAt
         if (lastElsewhere != null && !screenChanged && now - lastElsewhere < recheckMs) {
             owed = true
@@ -54,6 +63,14 @@ class LookPacer(private val recheckMs: Long = 5_000, private val maxFailures: In
                 failures = 0
             }
             Outcome.Failed -> owed = ++failures < maxFailures
+            // The count stands once it's reached, so a page that stays unplaced gets one look at a
+            // time from then on; a read, leaving the page, or another screen opening starts it afresh.
+            Outcome.Unsure -> if (++failures < maxFailures) {
+                elsewhereAt = null
+                owed = true
+            } else {
+                elsewhereAt = now
+            }
         }
     }
 

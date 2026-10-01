@@ -41,17 +41,35 @@ class AndroidTeamsDevice(private val service: AccessibilityService) : TeamsDevic
     fun teamsWindowRoot(): AccessibilityNodeInfo? =
         topAppWindow()?.root?.takeIf { it.packageName == TeamsSelectors.TEAMS_PACKAGE }
 
+    /** What Teams has on top, as far as its native views tell (see [teamsView]). */
+    enum class TeamsView {
+        /** Assignments: the list's toolbar title or a detail screen's subtitle says so. */
+        Assignments,
+
+        /**
+         * An app's page that doesn't name Assignments. It may still be an assignment's: opened
+         * from Teams' Activity feed, its screen has the class name for a title and no subtitle.
+         */
+        WebModule,
+
+        /** Anything else, a chat say, or Teams not on top. */
+        Other,
+    }
+
     /**
-     * Whether Teams is on top showing Assignments, judged from its native toolbar alone: the
-     * list's title or a detail screen's subtitle reads `Assignments`. Cheap enough to ask after
-     * every change in Teams, where copying the whole window isn't.
+     * What Teams is showing, judged from its native views alone. Cheap enough to ask after every
+     * change in Teams, where copying the whole window isn't.
      */
-    fun showsAssignments(): Boolean {
-        val root = teamsWindowRoot() ?: return false
-        return listOf(TeamsSelectors.TOOLBAR_TITLE, TeamsSelectors.TOOLBAR_SUBTITLE).any { id ->
-            root.findAccessibilityNodeInfosByViewId("${TeamsSelectors.TEAMS_PACKAGE}:id/$id").any {
-                it.text?.toString()?.trim() == TeamsSelectors.ASSIGNMENTS_TITLE
-            }
+    fun teamsView(): TeamsView {
+        val root = teamsWindowRoot() ?: return TeamsView.Other
+        fun nodes(id: String) = root.findAccessibilityNodeInfosByViewId("${TeamsSelectors.TEAMS_PACKAGE}:id/$id")
+        val named = listOf(TeamsSelectors.TOOLBAR_TITLE, TeamsSelectors.TOOLBAR_SUBTITLE).any { id ->
+            nodes(id).any { it.text?.toString()?.trim() == TeamsSelectors.ASSIGNMENTS_TITLE }
+        }
+        return when {
+            named -> TeamsView.Assignments
+            nodes(TeamsSelectors.WEB_MODULE).isNotEmpty() -> TeamsView.WebModule
+            else -> TeamsView.Other
         }
     }
 

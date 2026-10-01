@@ -43,10 +43,10 @@ enum class HandInResult {
  * 4. wait for Teams to show the work as handed in.
  *
  * Safety: besides tabs and cards, the only thing ever pressed is the toolbar button reading
- * exactly `HAND IN` or `HAND IN LATE` (see [requireHandInButton]). It is pressed once; a second
- * press happens only when Teams reports that the first didn't go through at all. Undo hand in,
- * Attach and the rest are never pressed. An assignment saved without a GUID is refused, so a
- * same-titled card can never stand in for it.
+ * exactly `HAND IN`, `HAND IN LATE` or `HAND IN AGAIN` (see [requireHandInButton]). It is
+ * pressed once; a second press happens only when Teams reports that the first didn't go through
+ * at all. Undo hand in, Attach and the rest are never pressed. An assignment saved without a
+ * GUID is refused, so a same-titled card can never stand in for it.
  */
 class HandInStateMachine(
     device: TeamsDevice,

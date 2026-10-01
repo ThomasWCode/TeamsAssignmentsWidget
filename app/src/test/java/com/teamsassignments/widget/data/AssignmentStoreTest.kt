@@ -202,6 +202,7 @@ class AssignmentStoreTest {
         store.markHandedIn(physics.key, remembered = false)
         assertEquals(listOf(hausaufgabe), store.state.value.assignments)
         assertEquals(emptySet(), store.recentlyHandedIn())
+        assertTrue(store.state.value.handedInWork.isEmpty())
     }
 
     @Test
@@ -211,10 +212,112 @@ class AssignmentStoreTest {
         store.markHandedIn(hausaufgabe.key)
         var told = emptySet<String>()
         store.applyObserved { saved, handedInLately ->
-            told = handedInLately
+            told = handedInLately.keys
             AssignmentStore.Observed(emptyList(), handedIn = saved.map { it.key })
         }
         assertEquals(setOf(hausaufgabe.key), told)
         assertEquals(setOf(physics.key, hausaufgabe.key), store.recentlyHandedIn())
+    }
+
+    @Test
+    fun `keeps the assignment behind a hand-in, and forgets both once it's back on the list`() = runTest {
+        // On the phone on 1 Oct: a hand-in undone in Teams came back without its Teams id, since
+        // only the id had been kept, and the assignment's own screen doesn't show one.
+        AssignmentStore(file, clock).apply {
+            saveSuccess(listOf(physics, hausaufgabe))
+            markHandedIn(physics.key)
+            // One seen handed in while reading along is kept the same way; one never on the list can't be.
+            applyObserved { saved, _ -> AssignmentStore.Observed(saved - hausaufgabe, handedIn = listOf(hausaufgabe.key, "never-listed")) }
+        }
+
+        val restarted = AssignmentStore(file, clock)
+        var told = emptyMap<String, Assignment?>()
+        restarted.applyObserved { saved, handedInLately ->
+            told = handedInLately
+            // Its own screen showed it open again: reading along puts it back.
+            AssignmentStore.Observed(saved + physics)
+        }
+        assertEquals(mapOf(physics.key to physics, hausaufgabe.key to hausaufgabe, "never-listed" to null), told)
+        with(restarted.state.value) {
+            assertEquals(listOf(physics), assignments)
+            assertEquals(setOf(hausaufgabe.key, "never-listed"), handedIn.keys)
+            assertEquals(listOf(hausaufgabe), handedInWork)
+        }
+    }
+
+    @Test
+    fun `a sync that finds the work open again forgets its hand-in`() = runTest {
+        // Codex review: left remembered, a hand-in after the sync kept the first one's time, and
+        // a list Teams hadn't refreshed could add the work back once that ran out.
+        val time = SettableClock(clock.instant())
+        val store = AssignmentStore(file, time)
+        store.saveSuccess(listOf(physics, hausaufgabe))
+        store.markHandedIn(physics.key)
+
+        // Undone in Teams, then synced: it's listed again.
+        store.saveSuccess(listOf(physics, hausaufgabe))
+        with(store.state.value) {
+            assertTrue(handedIn.isEmpty())
+            assertTrue(handedInWork.isEmpty())
+        }
+
+        // Handed in again eleven hours on, in Teams this time: remembered from then, not from before.
+        time.now = time.now.plusSeconds(11 * 3_600L)
+        store.applyObserved { saved, _ -> AssignmentStore.Observed(saved - physics, handedIn = listOf(physics.key)) }
+        time.now = time.now.plusSeconds(2 * 3_600L)
+        assertEquals(setOf(physics.key), store.recentlyHandedIn())
+        assertEquals(listOf(physics), AssignmentStore(file, time).state.value.handedInWork)
+    }
+
+    @Test
+    fun `a hand-in remembered without a Teams id is forgotten once the list holds that work under its id`() = runTest {
+        // Codex review: only the same key counted, so work handed in before the list had shown it
+        // stayed remembered under its stand-in key after a sync listed it under its Teams id. A
+        // later hand-in was then remembered beside it, and its screen could bring back neither.
+        val unkeyed = physics.copy(key = Assignment.fallbackKey(physics.className, physics.title))
+        val store = AssignmentStore(file, clock)
+        store.saveSuccess(listOf(unkeyed, hausaufgabe))
+        store.markHandedIn(unkeyed.key)
+        assertEquals(setOf(unkeyed.key), store.recentlyHandedIn())
+
+        // Another week's work of that class and title, due at another time, isn't it.
+        store.saveSuccess(listOf(hausaufgabe, physics.copy(dueAt = physics.dueAt!! + 7 * 24 * 3_600_000L)))
+        assertEquals(setOf(unkeyed.key), store.recentlyHandedIn())
+
+        store.saveSuccess(listOf(hausaufgabe, physics))
+        with(store.state.value) {
+            assertTrue(handedIn.isEmpty())
+            assertTrue(handedInWork.isEmpty())
+        }
+    }
+
+    @Test
+    fun `a state file from 0_2_0 that remembers listed work as handed in is put right on loading`() = runTest {
+        // Codex review: there a sync put work back on the list without forgetting its hand-in.
+        // Loaded as it stood, a later hand-in kept the old time, and the work itself wasn't kept.
+        val time = SettableClock(clock.instant())
+        file.writeText(
+            """{"assignments":[{"key":"${physics.key}","title":"${physics.title}","className":"${physics.className}"}],""" +
+                """"handedIn":{"${physics.key}":${time.millis()},"${hausaufgabe.key}":${time.millis()}}}""",
+        )
+        val store = AssignmentStore(file, time)
+        assertEquals(setOf(hausaufgabe.key), store.recentlyHandedIn())
+
+        // Handed in eleven hours on: remembered from then, with the work behind it.
+        time.now = time.now.plusSeconds(11 * 3_600L)
+        store.applyObserved { saved, _ -> AssignmentStore.Observed(emptyList(), handedIn = saved.map { it.key }) }
+        time.now = time.now.plusSeconds(2 * 3_600L)
+        assertEquals(setOf(physics.key), store.recentlyHandedIn())
+        assertEquals(listOf(physics.key), store.state.value.handedInWork.map { it.key })
+    }
+
+    @Test
+    fun `a sync keeps the hand-ins of work it doesn't list`() = runTest {
+        val store = AssignmentStore(file, clock)
+        store.saveSuccess(listOf(physics, hausaufgabe))
+        store.markHandedIn(physics.key)
+        store.saveSuccess(listOf(hausaufgabe))
+        assertEquals(setOf(physics.key), store.recentlyHandedIn())
+        assertEquals(listOf(physics), store.state.value.handedInWork)
     }
 }

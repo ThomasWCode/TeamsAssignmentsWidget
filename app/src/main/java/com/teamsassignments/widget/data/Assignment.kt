@@ -74,4 +74,10 @@ data class WidgetState(
      * [AssignmentStore.recentlyHandedIn]). Kept here so a restart doesn't forget them.
      */
     val handedIn: Map<String, Long> = emptyMap(),
+    /**
+     * The assignments behind [handedIn], as they stood when they went, where they were on the
+     * list. Should a hand-in be undone, the assignment's own screen then brings it back whole,
+     * Teams id and all (see TeamsObserver).
+     */
+    val handedInWork: List<Assignment> = emptyList(),
 )

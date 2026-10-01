@@ -54,25 +54,28 @@ class AssignmentStore(
         it.copy(status = SyncStatus.Stopped(cancelled, clock.millis()))
     }
 
+    /** Saves a sync's list. Work it found open again is no longer remembered as handed in (see [remembering]). */
     suspend fun saveSuccess(assignments: List<Assignment>) = update { state ->
         state.copy(
             assignments = assignments,
             lastSuccessAt = clock.millis(),
             status = SyncStatus.Idle,
             classColors = ClassColors.assign(state.classColors, assignments.map { it.className }),
-        )
+        ).remembering(recent(state.handedIn, clock.millis()), state.handedInWork)
     }
 
     /**
      * Drops an assignment that has just been handed in, or is taken as handed in. A real hand-in is
-     * [remembered] (see [recentlyHandedIn]); one only presumed isn't, so that a list still showing
-     * it can bring it back. The sync time and status are kept.
+     * [remembered] (see [recentlyHandedIn]), along with the assignment itself, in case it's undone;
+     * one only presumed isn't, so that a list still showing it can bring it back. The sync time
+     * and status are kept.
      */
     suspend fun markHandedIn(key: String, remembered: Boolean = true) = update { state ->
         val now = clock.millis()
-        state.copy(
-            assignments = state.assignments.filterNot { it.key == key },
+        val (gone, kept) = state.assignments.partition { it.key == key }
+        state.copy(assignments = kept).remembering(
             handedIn = recent(state.handedIn, now) + if (remembered) mapOf(key to now) else emptyMap(),
+            work = state.handedInWork + gone,
         )
     }
 
@@ -84,15 +87,17 @@ class AssignmentStore(
 
     /**
      * Applies what was seen in Teams outside a sync (see TeamsObserver). [transform] gets the list
-     * and the keys handed in lately. A running sync owns the list, so nothing changes while one is;
-     * the sync time and status are kept either way. Keys newly seen handed in are remembered even
-     * when the list is unchanged; those already remembered keep their time.
+     * and what was handed in lately: each key, with the assignment as it stood if it was on the
+     * list. A running sync owns the list, so nothing changes while one is; the sync time and status
+     * are kept either way. Keys newly seen handed in are remembered even when the list is
+     * unchanged; those already remembered keep their time. Work [transform] puts back on the list,
+     * its hand-in undone, is forgotten (see [remembering]).
      */
-    suspend fun applyObserved(transform: (List<Assignment>, Set<String>) -> Observed) = update { state ->
+    suspend fun applyObserved(transform: (List<Assignment>, Map<String, Assignment?>) -> Observed) = update { state ->
         if (state.status is SyncStatus.Running) return@update state
         val now = clock.millis()
         val lately = recent(state.handedIn, now)
-        val observed = transform(state.assignments, lately.keys)
+        val observed = transform(state.assignments, lately.keys.associateWith { key -> state.handedInWork.firstOrNull { it.key == key } })
         val newlyHandedIn = observed.handedIn.filterNot { it in lately }
         if (observed.assignments == state.assignments && newlyHandedIn.isEmpty()) {
             state
@@ -100,9 +105,32 @@ class AssignmentStore(
             state.copy(
                 assignments = observed.assignments,
                 classColors = ClassColors.assign(state.classColors, observed.assignments.map { it.className }),
+            ).remembering(
                 handedIn = lately + newlyHandedIn.associateWith { now },
+                // What just went from the list, should its hand-in be undone.
+                work = state.handedInWork + state.assignments.filter { it.key in newlyHandedIn },
             )
         }
+    }
+
+    /**
+     * With [handedIn] as what's remembered, less whatever is on the list, and of [work] only the
+     * assignments behind what's left. Work on the list is open again, however it got back there:
+     * a sync found it, or its hand-in was seen undone. Left remembered, a later hand-in would keep
+     * the first one's time, and a list Teams hasn't refreshed could add it back too soon.
+     *
+     * Work handed in before the list had given it its Teams id is remembered under the key that
+     * stood in for one, made from its class and title. It counts as listed once the list holds
+     * work of that class and title, due at the same time, under whichever key. Left remembered
+     * beside a later hand-in under the Teams id, the two would both answer to the same screen.
+     */
+    private fun WidgetState.remembering(handedIn: Map<String, Long>, work: List<Assignment>): WidgetState {
+        val behind = work.associateBy { it.key }
+        val kept = handedIn.filterKeys { key ->
+            val then = behind[key]
+            assignments.none { it.key == key || (then != null && it.dueAt == then.dueAt && Assignment.fallbackKey(it.className, it.title) == key) }
+        }
+        return copy(handedIn = kept, handedInWork = behind.values.filter { it.key in kept })
     }
 
     private fun recent(handedIn: Map<String, Long>, now: Long) = handedIn.filterValues { now - it in 0 until HANDED_IN_MEMORY_MS }
@@ -111,11 +139,14 @@ class AssignmentStore(
         val loaded = runCatching {
             if (file.exists()) json.decodeFromString<WidgetState>(file.readText()) else null
         }.getOrNull() ?: WidgetState()
+        // Nothing on the list is remembered as handed in (see [remembering]). A file saved by 0.2.0
+        // can say otherwise: a sync then put work back on the list without forgetting its hand-in.
+        val tidy = loaded.remembering(loaded.handedIn, loaded.handedInWork)
         // A sync can't outlive the process, so a saved Running status means it was killed mid-sync.
-        return if (loaded.status is SyncStatus.Running) {
-            loaded.copy(status = SyncStatus.Failed(INTERRUPTED, clock.millis()))
+        return if (tidy.status is SyncStatus.Running) {
+            tidy.copy(status = SyncStatus.Failed(INTERRUPTED, clock.millis()))
         } else {
-            loaded
+            tidy
         }
     }
 
