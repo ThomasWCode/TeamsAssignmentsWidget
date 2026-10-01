@@ -522,6 +522,52 @@ class TeamsObserverTest {
     }
 
     @Test
+    fun `brings back undone work though another week's is still on the list`() {
+        // Codex review: weekly work shares its title and class, and the check that keeps a new
+        // same-titled row from being added ran first, so the undone assignment stayed away. Its
+        // due time tells it from the other week's.
+        val lastWeek = facts.copy(key = "11111111-2222-3333-4444-555555555555", dueAt = facts.dueAt!! - 7 * 24 * 3_600_000L)
+        val undone = merge(
+            TeamsObserver().see("detail_3a5b3795_hand_in_again"), listOf(lastWeek), recentlyHandedIn = mapOf(facts.key to facts),
+        )
+        assertEquals(listOf(lastWeek.key, facts.key), undone.assignments.map { it.key })
+        assertEquals(lastWeek, undone.assignments.first())
+        assertEquals(listOf("\"${facts.title}\" is no longer handed in"), undone.changes)
+    }
+
+    @Test
+    fun `brings back undone work whose class was never read`() {
+        // Codex review: a row saved from a card whose class couldn't be read has none, yet can be
+        // handed in. An unknown class stands for any, as it does when matching a saved row.
+        val undone = merge(
+            TeamsObserver().see("detail_3a5b3795_hand_in_again"), emptyList(),
+            recentlyHandedIn = mapOf(facts.key to facts.copy(className = "")),
+        )
+        with(undone.assignments.single()) {
+            assertEquals(facts.key, key)
+            assertEquals(facts.className, className)
+        }
+    }
+
+    @Test
+    fun `gives back a Teams id only where it's surely this assignment's`() {
+        // Hand in goes by that id, so a guess could hand in another week's work. Without a due
+        // time to check against the screen's, the work comes back as new, without an id.
+        val noDueTime = merge(
+            TeamsObserver().see("detail_3a5b3795_hand_in_again"), emptyList(),
+            recentlyHandedIn = mapOf(facts.key to facts.copy(dueAt = null)),
+        )
+        assertEquals(Assignment.fallbackKey(facts.className, facts.title), noDueTime.assignments.single().key)
+
+        // And where the screen could be either of two saved rows, nothing is touched.
+        val rows = listOf("11111111-2222-3333-4444-555555555555", "66666666-7777-8888-9999-000000000000")
+            .map { facts.copy(key = it, dueAt = null) }
+        val ambiguous = merge(TeamsObserver().see("detail_3a5b3795_hand_in_again"), rows, recentlyHandedIn = mapOf(facts.key to facts))
+        assertEquals(rows, ambiguous.assignments)
+        assertTrue(ambiguous.changes.isEmpty())
+    }
+
+    @Test
     fun `the list gives a row its Teams id once its own screen has shown the hand-in undone`() {
         // Work seen on Completed is remembered by its id alone, so its own screen can only add it
         // back without one. The list then supplies the id, where otherwise it would pass the card by.

@@ -390,24 +390,22 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             // known due time must agree even for a lone candidate: weekly work repeats its title and
             // class, and a due date that really changed shows on the list, where cards have GUIDs.
             val sameTitle = saved.filter { it.title.normalizedTitle() == title.normalizedTitle() }
-            val match = sameTitle
+            val candidates = sameTitle
                 .filter { className == null || it.className.isEmpty() || classMatches(it.className, className) }
                 .filter { dueAt == null || it.dueAt == null || it.dueAt == dueAt }
-                .singleOrNull()
+            val match = candidates.singleOrNull()
 
             if (match == null) {
-                // Open work the list hasn't shown yet, say from a Teams notification: add it once
-                // there's enough to show, and let the list swap in its GUID when it's seen there. Not
-                // while a same-titled row could be this class's (another week's, or one of unknown
-                // class): that is left to the list, where cards have GUIDs.
                 val open = detail.status?.let(TeamsSelectors.DETAIL_NOT_HANDED_IN_STATUS::matches) == true
                 if (!open || className == null || dueAt == null) return unchanged
-                if (sameTitle.any { it.className.isEmpty() || classMatches(it.className, className) }) return unchanged
                 // Handed in lately, and now open again on its own screen: the hand-in was undone.
-                // It comes back as it was, Teams id included, so it can be handed in again.
-                val undone = handedInWork.singleOrNull {
-                    it.title.normalizedTitle() == title.normalizedTitle() && classMatches(it.className, className) &&
-                        (it.dueAt == null || it.dueAt == dueAt)
+                // It comes back as it was, Teams id included, so it can be handed in again. That id
+                // must be this very assignment's, so its due time has to be the screen's exactly,
+                // and no saved row may be one this screen could belong to. Another week's row, due
+                // at another time, is no bar. A class left unknown stands for any, as above.
+                val undone = handedInWork.takeIf { candidates.isEmpty() }?.singleOrNull {
+                    it.title.normalizedTitle() == title.normalizedTitle() &&
+                        (it.className.isEmpty() || classMatches(it.className, className)) && it.dueAt == dueAt
                 }
                 if (undone != null) {
                     val restored = undone.copy(
@@ -422,6 +420,11 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                     )
                     return Merged(saved + restored, listOf("\"$title\" is no longer handed in"))
                 }
+                // Open work the list hasn't shown yet, say from a Teams notification: add it once
+                // there's enough to show, and let the list swap in its GUID when it's seen there. Not
+                // while a same-titled row could be this class's (another week's, or one of unknown
+                // class): that is left to the list, where cards have GUIDs.
+                if (sameTitle.any { it.className.isEmpty() || classMatches(it.className, className) }) return unchanged
                 val added = Assignment(
                     key = Assignment.fallbackKey(className, title),
                     title = title,
