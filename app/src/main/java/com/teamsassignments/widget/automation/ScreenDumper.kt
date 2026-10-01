@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.teamsassignments.widget.data.SyncLog
 import kotlinx.coroutines.CoroutineScope
@@ -74,7 +73,8 @@ class ScreenDumper(
             // Walking a large tree over IPC and writing it out would stall the main thread.
             val file = withContext(Dispatchers.IO) { runCatching { save(root, "teams") }.getOrNull() }
             if (file == null) {
-                Toast.makeText(service, "Couldn't save the dump", Toast.LENGTH_LONG).show()
+                // On the pill: the service is in the background, where Android drops a toast.
+                banner.showMessage("Couldn't save the dump")
                 return@launch
             }
             log.add("Saved screen dump ${file.name}")

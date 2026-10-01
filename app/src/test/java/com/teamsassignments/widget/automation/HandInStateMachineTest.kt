@@ -100,6 +100,28 @@ class HandInStateMachineTest {
     }
 
     @Test
+    fun `hands in work whose hand-in was undone, with Hand in again`() = runTest {
+        // On the phone on 1 Oct: once a hand-in is undone, Teams' button reads HAND IN AGAIN. It
+        // wasn't matched, and the hand-in ended with no button to press.
+        val facts = Assignment(
+            key = "3a5b3795-5fbb-40f8-8fb2-a2f800777d3d",
+            title = "Hausaufgabe: 5 facts \"Familie\"",
+            className = "German Y12 1-1 Speaking Sessions 2026-27",
+            tab = AssignmentTab.Forthcoming,
+        )
+        val device = FakeTeamsDevice(
+            lists = mapOf(
+                Tab.Forthcoming to "list_forthcoming_earlier_today",
+                Tab.PastDue to "list_past_due",
+                Tab.Completed to "list_completed",
+            ),
+        ).apply { detailOverrides[facts.key] = "detail_3a5b3795_hand_in_again" }
+        assertEquals(HandInResult.HandedIn, handIn(device).run(facts))
+        assertEquals(listOf("HAND IN AGAIN"), device.clicked.filter { it.startsWith("HAND IN") })
+        assertEquals(listOf(facts.key), device.handedIn)
+    }
+
+    @Test
     fun `presses nothing but tabs, the card and Hand in`() = runTest {
         val device = FakeTeamsDevice()
         handIn(device).run(physics)

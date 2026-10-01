@@ -8,7 +8,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
-import android.widget.Toast
+import com.teamsassignments.widget.automation.AndroidTeamsDevice.TeamsView
 import com.teamsassignments.widget.data.Assignment
 import com.teamsassignments.widget.data.AssignmentStore
 import com.teamsassignments.widget.data.DueDateParser
@@ -171,13 +171,9 @@ class TeamsAutomationService : AccessibilityService() {
                 log.add("\"${target.title}\" taken as handed in")
                 log.persist()
                 WidgetUpdater.update(this@TeamsAutomationService)
-                Toast.makeText(
-                    this@TeamsAutomationService,
-                    "Taken as handed in: “${target.title}” is on neither Forthcoming nor Past due",
-                    Toast.LENGTH_LONG,
-                ).show()
+                banner.showMessage("Taken as handed in: “${target.title}” is on neither Forthcoming nor Past due")
             } else if (opened == false) {
-                Toast.makeText(this@TeamsAutomationService, "Couldn't find “${target.title}” in Teams", Toast.LENGTH_LONG).show()
+                banner.showMessage("Couldn't find “${target.title}” in Teams")
             }
             lookAfterwards()
         }
@@ -262,7 +258,10 @@ class TeamsAutomationService : AccessibilityService() {
         }
     }
 
-    /** Toasts lead with the outcome: Android 12+ cuts a text toast off after two lines. */
+    /**
+     * The messages lead with the outcome, and go on the pill ([OverlayBanner.showMessage]): from
+     * here, in the background, a toast would be dropped.
+     */
     private suspend fun runHandIn(target: Assignment) {
         log.add("── Hand in ──")
         banner.show("Handing in…", "Cancel", showSpinner = true) { cancelRequested = true }
@@ -343,7 +342,7 @@ class TeamsAutomationService : AccessibilityService() {
         }
         // Back to the widget, which no longer lists it. Otherwise Teams stays open on what happened.
         if (backToWidget && device.foregroundPackage() == TeamsSelectors.TEAMS_PACKAGE) device.home()
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        banner.showMessage(message)
     }
 
     /**
@@ -367,27 +366,30 @@ class TeamsAutomationService : AccessibilityService() {
         val now = SystemClock.elapsedRealtime()
         if (!pacer.shouldLook(now, teamsScreenChanged)) return
         teamsScreenChanged = false
-        var onAssignments = false
+        var view = TeamsView.Other
         val root = withContext(Dispatchers.Default) {
             try {
-                // The toolbar check is cheap; copying the whole window is only worth it on Assignments.
-                onAssignments = device.showsAssignments()
-                if (onAssignments) device.teamsSnapshot() else null
+                // That check is cheap; copying the whole window is only worth it where Assignments may be.
+                view = device.teamsView()
+                if (view == TeamsView.Other) null else device.teamsSnapshot()
             } catch (e: Exception) {
                 Log.w(SyncLog.TAG, "Couldn't read Teams", e)
                 null
             }
         }
         if (isBusy) return
-        if (root == null) {
+        // A page that doesn't name Assignments counts only as an assignment's own screen.
+        val onAssignments = view == TeamsView.Assignments || (root != null && TeamsScreens.isDetail(root))
+        if (root == null || !onAssignments) {
             // Assignments whose tree couldn't be copied (changing underneath, say) is tried again
-            // shortly; anywhere else, what was seen of Assignments no longer holds.
-            if (onAssignments) {
-                pacer.looked(LookPacer.Outcome.Failed, now)
-            } else {
-                pacer.looked(LookPacer.Outcome.Elsewhere, now)
-                observer.reset()
+            // shortly, as is a page that may yet load as an assignment's. Anywhere but on
+            // Assignments, what was seen of it no longer holds.
+            when (view) {
+                TeamsView.Assignments -> pacer.looked(LookPacer.Outcome.Failed, now)
+                TeamsView.WebModule -> pacer.looked(LookPacer.Outcome.Unsure, now)
+                TeamsView.Other -> pacer.looked(LookPacer.Outcome.Elsewhere, now)
             }
+            if (view != TeamsView.Assignments) observer.reset()
             return
         }
         pacer.looked(LookPacer.Outcome.Read, now)
@@ -399,7 +401,7 @@ class TeamsAutomationService : AccessibilityService() {
                 sighting, saved, DueDateParser(Clock.systemDefaultZone()), System.currentTimeMillis(), handedInLately,
             )
             changes = merged.changes
-            AssignmentStore.Observed(merged.assignments, merged.handedIn)
+            AssignmentStore.Observed(merged.assignments, merged.handedIn, merged.undone)
         }
         if (changes.isEmpty()) return
         changes.forEach { log.add("Seen in Teams: $it") }

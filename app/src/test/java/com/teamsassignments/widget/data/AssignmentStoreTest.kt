@@ -202,6 +202,7 @@ class AssignmentStoreTest {
         store.markHandedIn(physics.key, remembered = false)
         assertEquals(listOf(hausaufgabe), store.state.value.assignments)
         assertEquals(emptySet(), store.recentlyHandedIn())
+        assertTrue(store.state.value.handedInWork.isEmpty())
     }
 
     @Test
@@ -211,10 +212,44 @@ class AssignmentStoreTest {
         store.markHandedIn(hausaufgabe.key)
         var told = emptySet<String>()
         store.applyObserved { saved, handedInLately ->
-            told = handedInLately
+            told = handedInLately.keys
             AssignmentStore.Observed(emptyList(), handedIn = saved.map { it.key })
         }
         assertEquals(setOf(hausaufgabe.key), told)
         assertEquals(setOf(physics.key, hausaufgabe.key), store.recentlyHandedIn())
+    }
+
+    @Test
+    fun `keeps the assignment behind a hand-in, and forgets both once it's undone`() = runTest {
+        // On the phone on 1 Oct: a hand-in undone in Teams came back without its Teams id, since
+        // only the id had been kept, and the assignment's own screen doesn't show one.
+        AssignmentStore(file, clock).apply {
+            saveSuccess(listOf(physics, hausaufgabe))
+            markHandedIn(physics.key)
+            // One seen handed in while reading along is kept the same way; one never on the list can't be.
+            applyObserved { saved, _ -> AssignmentStore.Observed(saved - hausaufgabe, handedIn = listOf(hausaufgabe.key, "never-listed")) }
+        }
+
+        val restarted = AssignmentStore(file, clock)
+        var told = emptyMap<String, Assignment?>()
+        restarted.applyObserved { saved, handedInLately ->
+            told = handedInLately
+            AssignmentStore.Observed(saved + physics, undone = listOf(physics.key))
+        }
+        assertEquals(mapOf(physics.key to physics, hausaufgabe.key to hausaufgabe, "never-listed" to null), told)
+        with(restarted.state.value) {
+            assertEquals(listOf(physics), assignments)
+            assertEquals(setOf(hausaufgabe.key, "never-listed"), handedIn.keys)
+            assertEquals(listOf(hausaufgabe), handedInWork)
+        }
+    }
+
+    @Test
+    fun `an undone hand-in is forgotten even when the list stays as it was`() = runTest {
+        val store = AssignmentStore(file, clock)
+        store.saveSuccess(listOf(physics))
+        store.applyObserved { saved, _ -> AssignmentStore.Observed(saved, handedIn = listOf(hausaufgabe.key)) }
+        store.applyObserved { saved, _ -> AssignmentStore.Observed(saved, undone = listOf(hausaufgabe.key)) }
+        assertEquals(emptySet(), store.recentlyHandedIn())
     }
 }

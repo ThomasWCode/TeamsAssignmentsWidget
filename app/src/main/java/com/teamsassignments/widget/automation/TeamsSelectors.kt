@@ -92,8 +92,14 @@ object TeamsSelectors {
     /** The native toolbar title: the class name on the detail screen, `Assignments` on the list. */
     const val TOOLBAR_TITLE = "action_bar_title_text"
 
-    /** The line under the toolbar title on the detail screen: `Assignments`. */
+    /**
+     * The line under the toolbar title on a detail screen opened from the list: `Assignments`.
+     * Opened from Teams' Activity feed, the screen has no such line.
+     */
     const val TOOLBAR_SUBTITLE = "action_bar_sub_title_text"
+
+    /** The native view holding an app's page in Teams: Assignments' screens, and other apps'. */
+    const val WEB_MODULE = "state_layout_web_module"
 
     /** The native toolbar itself, which holds the detail screen's Hand in button. */
     const val TOOLBAR = "toolbar"
@@ -128,11 +134,12 @@ object TeamsSelectors {
     // Handing in
 
     /**
-     * The detail screen's toolbar button, `HAND IN` or `HAND IN LATE` (`TURN IN` in en-US). Only
+     * The detail screen's toolbar button: `HAND IN`, `HAND IN LATE` once the work is overdue, or
+     * `HAND IN AGAIN` once a hand-in has been undone, overdue or not (`TURN IN` in en-US). Only
      * the hand-in workflow presses it, after the user confirms on the widget. Teams hyphenates the
      * words elsewhere (below), so a hyphen is allowed here too.
      */
-    val HAND_IN_BUTTON = Regex("""^(hand|turn)[ -]?in( late)?$""", RegexOption.IGNORE_CASE)
+    val HAND_IN_BUTTON = Regex("""^(hand|turn)[ -]?in( late| again)?$""", RegexOption.IGNORE_CASE)
 
     /** What that button reads once the work is handed in: `UNDO HAND-IN`, hyphen and all. Never pressed. */
     val UNDO_HAND_IN_BUTTON = Regex("""^undo (hand|turn)[ -]?in$""", RegexOption.IGNORE_CASE)
