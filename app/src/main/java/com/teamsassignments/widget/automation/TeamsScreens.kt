@@ -220,15 +220,21 @@ object TeamsScreens {
     }
 
     /**
-     * Whether the toolbar title is the class name, as on a detail screen opened from the
-     * Assignments list: the subtitle under it reads `Assignments`.
+     * Whether the toolbar title is the class name, as on a detail screen. Opened from the
+     * Assignments list, the subtitle under it reads `Assignments`. Opened from Teams' Activity
+     * feed there is no subtitle, only the class name, which `Assignments` itself never is.
      */
-    fun classInToolbar(root: UiNode): Boolean =
-        root.findById(TeamsSelectors.TOOLBAR_SUBTITLE)?.text?.squash() == TeamsSelectors.ASSIGNMENTS_TITLE
+    fun classInToolbar(root: UiNode): Boolean {
+        val subtitle = root.findById(TeamsSelectors.TOOLBAR_SUBTITLE)
+        if (subtitle != null) return subtitle.text.squash() == TeamsSelectors.ASSIGNMENTS_TITLE
+        val title = root.findById(TeamsSelectors.TOOLBAR_TITLE)?.text?.squash()
+        return isDetail(root) && !title.isNullOrEmpty() && title != TeamsSelectors.ASSIGNMENTS_TITLE
+    }
 
     /**
      * The detail screen's Hand in button: a native button in Teams' toolbar reading exactly
-     * `HAND IN` or `HAND IN LATE`. Null on any other screen, and once the work is handed in.
+     * `HAND IN`, `HAND IN LATE` or `HAND IN AGAIN`. Null on any other screen, and once the work
+     * is handed in.
      */
     fun handInButton(root: UiNode): UiNode? = toolbarButton(root, TeamsSelectors.HAND_IN_BUTTON)
 

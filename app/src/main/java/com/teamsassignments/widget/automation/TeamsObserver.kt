@@ -27,6 +27,8 @@ import kotlin.math.abs
  *   together (see [OpenLists]): taken as handed in.
  *
  * Nor is anything just handed in added back from a list, which Teams may not have refreshed since.
+ * Its own screen showing it as not handed in is another matter: the hand-in has been undone, and
+ * the assignment comes back as it was.
  */
 class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
 
@@ -55,7 +57,8 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
      * showed as handed in (whether or not they were still listed, less those already remembered),
      * and those it took as handed in for being on neither open list. Only the former are
      * remembered as handed in: were the latter wrong, the next look at the list that does show
-     * them would bring them back.
+     * them would bring them back. Work put back on the list, its hand-in undone, needs no
+     * reporting: the store forgets a hand-in once its work is listed again.
      */
     data class Merged(
         val assignments: List<Assignment>,
@@ -246,18 +249,19 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
     companion object {
         /**
          * Applies [sighting] to the [saved] list. [wallClock] is the time now, in epoch milliseconds.
-         * [recentlyHandedIn] holds keys handed in lately: a list still showing them as open is out of
-         * date, so they aren't added back from one.
+         * [recentlyHandedIn] holds what was handed in lately: each key, with the assignment as it
+         * stood if it was on the list. A list still showing one as open is out of date, so it isn't
+         * added back from one; its own screen showing it as not handed in brings it back.
          */
         fun merge(
             sighting: Sighting,
             saved: List<Assignment>,
             parser: DueDateParser,
             wallClock: Long,
-            recentlyHandedIn: Set<String> = emptySet(),
+            recentlyHandedIn: Map<String, Assignment?> = emptyMap(),
         ): Merged = when (sighting) {
             is Sighting.OnList -> mergeList(sighting, saved, parser, wallClock, recentlyHandedIn)
-            is Sighting.OnDetail -> mergeDetail(sighting, saved, parser, wallClock)
+            is Sighting.OnDetail -> mergeDetail(sighting, saved, parser, wallClock, recentlyHandedIn.values.filterNotNull())
         }
 
         private fun mergeList(
@@ -265,8 +269,10 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             saved: List<Assignment>,
             parser: DueDateParser,
             wallClock: Long,
-            recentlyHandedIn: Set<String>,
+            recentlyHandedIn: Map<String, Assignment?>,
         ): Merged {
+            // Work handed in before the list had shown it is remembered without its Teams id.
+            val handedInUnkeyed = recentlyHandedIn.values.filterNotNull().filterNot { TeamsSelectors.CARD_ID.matches(it.key) }
             val out = saved.toMutableList()
             val changes = mutableListOf<String>()
             val handedIn = mutableListOf<String>()
@@ -303,7 +309,13 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                     }
                     continue
                 }
-                if (card.id in recentlyHandedIn) continue
+                // A detail screen seen on its own may have saved it already, without its GUID.
+                val unkeyed = out.indexOfFirst { !TeamsSelectors.CARD_ID.matches(it.key) && sameRow(it, card, dueAt) }
+                // Handed in lately, and still listed: a list Teams hasn't refreshed, unless its own
+                // screen has shown it open since, which is how it came to be saved again. Remembered
+                // without its Teams id, it is told by its title, class and due time instead.
+                val handedInLately = card.id in recentlyHandedIn || handedInUnkeyed.any { sameWork(it, card, dueAt) }
+                if (handedInLately && unkeyed < 0) continue
 
                 val added = Assignment(
                     key = card.id,
@@ -314,8 +326,6 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                     tab = tab,
                     lastSyncedAt = wallClock,
                 )
-                // A detail screen seen on its own may have saved it already, without its GUID.
-                val unkeyed = out.indexOfFirst { !TeamsSelectors.CARD_ID.matches(it.key) && sameRow(it, card, dueAt) }
                 if (unkeyed >= 0) {
                     val earlier = out[unkeyed]
                     out[unkeyed] = added.copy(
@@ -367,7 +377,13 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             )
         }
 
-        private fun mergeDetail(sighting: Sighting.OnDetail, saved: List<Assignment>, parser: DueDateParser, wallClock: Long): Merged {
+        private fun mergeDetail(
+            sighting: Sighting.OnDetail,
+            saved: List<Assignment>,
+            parser: DueDateParser,
+            wallClock: Long,
+            handedInWork: List<Assignment>,
+        ): Merged {
             val detail = sighting.detail
             val unchanged = Merged(saved, emptyList())
             val title = detail.title ?: return unchanged
@@ -378,18 +394,43 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             // known due time must agree even for a lone candidate: weekly work repeats its title and
             // class, and a due date that really changed shows on the list, where cards have GUIDs.
             val sameTitle = saved.filter { it.title.normalizedTitle() == title.normalizedTitle() }
-            val match = sameTitle
+            val candidates = sameTitle
                 .filter { className == null || it.className.isEmpty() || classMatches(it.className, className) }
                 .filter { dueAt == null || it.dueAt == null || it.dueAt == dueAt }
-                .singleOrNull()
+            val match = candidates.singleOrNull()
 
             if (match == null) {
+                val open = detail.status?.let(TeamsSelectors.DETAIL_NOT_HANDED_IN_STATUS::matches) == true
+                if (!open || className == null || dueAt == null) return unchanged
+                // Handed in lately, and now open again on its own screen: the hand-in was undone.
+                // It comes back as it was, Teams id included, so it can be handed in again. That id
+                // must be this very assignment's, so its due time has to be the screen's exactly,
+                // and no saved row may be one this screen could belong to. Another week's row, due
+                // at another time, is no bar. A class left unknown stands for any, as above.
+                val remembered = handedInWork.takeIf { candidates.isEmpty() }.orEmpty().filter {
+                    it.title.normalizedTitle() == title.normalizedTitle() &&
+                        (it.className.isEmpty() || classMatches(it.className, className)) && it.dueAt == dueAt
+                }
+                // Work handed in both before and after the list gave it its Teams id can be
+                // remembered twice over: the one with the id is the one to give back.
+                val undone = remembered.singleOrNull { TeamsSelectors.CARD_ID.matches(it.key) } ?: remembered.singleOrNull()
+                if (undone != null) {
+                    val restored = undone.copy(
+                        title = title,
+                        className = className,
+                        description = detail.instructions,
+                        dueText = detail.dueText.orEmpty(),
+                        dueAt = dueAt,
+                        tab = if (dueAt <= wallClock) AssignmentTab.PastDue else AssignmentTab.Forthcoming,
+                        detailReadAt = wallClock,
+                        lastSyncedAt = wallClock,
+                    )
+                    return Merged(saved + restored, listOf("\"$title\" is no longer handed in"))
+                }
                 // Open work the list hasn't shown yet, say from a Teams notification: add it once
                 // there's enough to show, and let the list swap in its GUID when it's seen there. Not
                 // while a same-titled row could be this class's (another week's, or one of unknown
                 // class): that is left to the list, where cards have GUIDs.
-                val open = detail.status?.let(TeamsSelectors.DETAIL_NOT_HANDED_IN_STATUS::matches) == true
-                if (!open || className == null || dueAt == null) return unchanged
                 if (sameTitle.any { it.className.isEmpty() || classMatches(it.className, className) }) return unchanged
                 val added = Assignment(
                     key = Assignment.fallbackKey(className, title),
@@ -434,6 +475,16 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             TeamsScreens.sameTitle(card.title, saved.title) &&
                 (card.collapsed || classMatches(saved.className, card.className)) &&
                 dueAt != null && dueAt == saved.dueAt
+
+        /**
+         * Whether [card] shows [work], handed in lately and remembered without a GUID. Unlike
+         * [sameRow], a collapsed card's class counts here: another class can set work of the same
+         * title for the same time, and passing its card by would keep it off the list. Only a class
+         * left unknown, on either side, stands for any.
+         */
+        private fun sameWork(work: Assignment, card: ListCard, dueAt: Long?): Boolean =
+            TeamsScreens.sameTitle(card.title, work.title) && dueAt != null && dueAt == work.dueAt &&
+                (work.className.isEmpty() || card.className.isEmpty() || classMatches(work.className, card.className))
 
         /** Class names as the toolbar and a card show them; a collapsed card's may start with its tag. */
         private fun classMatches(a: String, b: String): Boolean = a == b || a.endsWith(" $b") || b.endsWith(" $a")

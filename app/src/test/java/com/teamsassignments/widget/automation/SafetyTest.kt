@@ -76,11 +76,15 @@ class SafetyTest {
         val handIn = HandInStateMachine(FakeTeamsDevice(), now = { 0L })
         handIn.requireHandInButton(load("detail_4c958b24").walk().single { it.text == "HAND IN" })
         handIn.requireHandInButton(load("detail_88fafeb2").walk().single { it.text == "HAND IN LATE" })
+        // As captured on the phone once a hand-in had been undone, on work not yet due and overdue.
+        handIn.requireHandInButton(load("detail_3a5b3795_hand_in_again").walk().single { it.text == "HAND IN AGAIN" })
+        handIn.requireHandInButton(load("detail_d3f67007_hand_in_again").walk().single { it.text == "HAND IN AGAIN" })
 
         val detail = load("detail_4c958b24")
         val refused = listOf(
             // As captured on the phone after a hand-in.
             load("detail_f63a23c9_handed_in").walk().single { it.text == "UNDO HAND-IN" },
+            load("detail_3a5b3795_handed_in").walk().single { it.text == "UNDO HAND-IN" },
             load("detail_4c958b24_handed_in").walk().single { it.text == "UNDO HAND-IN" },
             load("detail_4c958b24_hand_in_disabled").walk().single { it.text == "HAND IN" },
             detail.walk().single { it.contentDescription == "Open Attach menu" },
@@ -101,11 +105,21 @@ class SafetyTest {
     @Test
     fun `the forbidden-control guard knows Teams' own wording`() {
         // Every label the captures show on a dangerous control, hyphenated UNDO HAND-IN included.
-        listOf("HAND IN", "HAND IN LATE", "UNDO HAND-IN", "Hand-in", "Open Attach menu", "Open New menu").forEach {
+        listOf("HAND IN", "HAND IN LATE", "HAND IN AGAIN", "UNDO HAND-IN", "Hand-in", "Open Attach menu", "Open New menu").forEach {
             assertTrue(TeamsSelectors.FORBIDDEN_CONTROL.containsMatchIn(it), it)
         }
         listOf("Forthcoming", "Past due", "Completed", "You have past due assignments").forEach {
             assertFalse(TeamsSelectors.FORBIDDEN_CONTROL.containsMatchIn(it), it)
+        }
+    }
+
+    @Test
+    fun `the Hand in button's wording is matched whole`() {
+        listOf("HAND IN", "Hand in late", "HAND IN AGAIN", "TURN IN", "Hand-in").forEach {
+            assertTrue(TeamsSelectors.HAND_IN_BUTTON.matches(it), it)
+        }
+        listOf("UNDO HAND-IN", "HAND IN AGAIN LATER", "HAND IN ALL", "Hand in again?", "AGAIN").forEach {
+            assertFalse(TeamsSelectors.HAND_IN_BUTTON.matches(it), it)
         }
     }
 
