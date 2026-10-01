@@ -39,7 +39,7 @@ When you open Assignments in Teams yourself, the app reads what's on screen, wit
 
 A list only counts once it has fully loaded, by the same tests a sync uses: the tab is selected, nothing is loading, the cards have stayed the same for 0.6 s (an empty list for 2 s, or 6 s if that tab had work at the last sync), and a tab you've just switched to isn't still showing the last tab's cards. *In full* means every card. Teams currently puts the whole list where the app can read it, cards off screen included, so one look is enough; if an update ever stopped that, you'd have to scroll from one end of the list to the other, pausing as you go, for it to count.
 
-Work falling due around the time you looked is left alone, since it may simply have moved from one list to the other. And anything taken as handed in this way comes back as soon as a list shows it again. Work Teams has shown as handed in, or that the widget handed in, isn't added back for 12 hours, even by a list Teams hasn't refreshed yet, and the app remembers this across restarts. If you undo the hand-in, the assignment's own screen brings it back as it was. A sync (↻) goes by Teams' lists alone.
+Work falling due around the time you looked is left alone, since it may simply have moved from one list to the other. And anything taken as handed in this way comes back as soon as a list shows it again. Work Teams has shown as handed in, or that the widget handed in, isn't added back for 12 hours, even by a list Teams hasn't refreshed yet, and the app remembers this across restarts. If you undo the hand-in, the assignment's own screen brings it back as it was. A sync (↻) goes by Teams' lists alone, and work it finds open again is no longer remembered as handed in.
 
 ### Safety and privacy
 

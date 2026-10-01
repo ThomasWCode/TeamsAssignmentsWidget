@@ -193,7 +193,6 @@ class TeamsObserverTest {
         val merged = merge(TeamsObserver().see("list_forthcoming"), emptyList(), recentlyHandedIn = mapOf(physics to null))
         assertEquals(6, merged.assignments.size)
         assertTrue(merged.assignments.none { it.key == physics })
-        assertTrue(merged.undone.isEmpty())
     }
 
     @Test
@@ -502,7 +501,6 @@ class TeamsObserverTest {
         // back from this screen without its Teams id, which the list couldn't then give it.
         val undone = merge(TeamsObserver().see("detail_3a5b3795_hand_in_again"), emptyList(), recentlyHandedIn = mapOf(facts.key to facts))
         assertEquals(listOf("\"${facts.title}\" is no longer handed in"), undone.changes)
-        assertEquals(listOf(facts.key), undone.undone)
         with(undone.assignments.single()) {
             assertEquals(facts.key, key)
             assertEquals(facts.description, description)
@@ -517,26 +515,23 @@ class TeamsObserverTest {
         val lastWeek = facts.copy(dueAt = facts.dueAt!! - 7 * 24 * 3_600_000L)
         val otherWeek = merge(TeamsObserver().see("detail_3a5b3795_hand_in_again"), emptyList(), recentlyHandedIn = mapOf(facts.key to lastWeek))
         assertEquals(Assignment.fallbackKey(facts.className, facts.title), otherWeek.assignments.single().key)
-        assertTrue(otherWeek.undone.isEmpty())
 
         // Nor is anything brought back from a screen still showing the work as handed in.
         val stillIn = merge(TeamsObserver().see("detail_3a5b3795_handed_in"), emptyList(), recentlyHandedIn = mapOf(facts.key to facts))
         assertTrue(stillIn.assignments.isEmpty())
-        assertTrue(stillIn.undone.isEmpty())
     }
 
     @Test
     fun `the list gives a row its Teams id once its own screen has shown the hand-in undone`() {
         // Work seen on Completed is remembered by its id alone, so its own screen can only add it
-        // back without one. The list then supplies the id, and the hand-in is forgotten.
+        // back without one. The list then supplies the id, where otherwise it would pass the card by.
         val remembered = mapOf<String, Assignment?>(physics to null)
         val fromDetail = merge(TeamsObserver().see("detail_4c958b24"), emptyList(), recentlyHandedIn = remembered)
         assertEquals(Assignment.fallbackKey("12.2-PH3", "Particle Physics Test"), fromDetail.assignments.single().key)
-        assertTrue(fromDetail.undone.isEmpty())
 
         val fromList = merge(TeamsObserver().see("list_forthcoming"), fromDetail.assignments, recentlyHandedIn = remembered)
         assertEquals(7, fromList.assignments.size)
-        assertEquals(listOf(physics), fromList.undone)
+        assertTrue("added \"Particle Physics Test\"" in fromList.changes, fromList.changes.toString())
         with(fromList.assignments.single { it.key == physics }) {
             assertTrue(description.startsWith("1) Use results"), description)
             assertNotNull(detailReadAt)
