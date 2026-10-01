@@ -292,6 +292,26 @@ class AssignmentStoreTest {
     }
 
     @Test
+    fun `a state file from 0_2_0 that remembers listed work as handed in is put right on loading`() = runTest {
+        // Codex review: there a sync put work back on the list without forgetting its hand-in.
+        // Loaded as it stood, a later hand-in kept the old time, and the work itself wasn't kept.
+        val time = SettableClock(clock.instant())
+        file.writeText(
+            """{"assignments":[{"key":"${physics.key}","title":"${physics.title}","className":"${physics.className}"}],""" +
+                """"handedIn":{"${physics.key}":${time.millis()},"${hausaufgabe.key}":${time.millis()}}}""",
+        )
+        val store = AssignmentStore(file, time)
+        assertEquals(setOf(hausaufgabe.key), store.recentlyHandedIn())
+
+        // Handed in eleven hours on: remembered from then, with the work behind it.
+        time.now = time.now.plusSeconds(11 * 3_600L)
+        store.applyObserved { saved, _ -> AssignmentStore.Observed(emptyList(), handedIn = saved.map { it.key }) }
+        time.now = time.now.plusSeconds(2 * 3_600L)
+        assertEquals(setOf(physics.key), store.recentlyHandedIn())
+        assertEquals(listOf(physics.key), store.state.value.handedInWork.map { it.key })
+    }
+
+    @Test
     fun `a sync keeps the hand-ins of work it doesn't list`() = runTest {
         val store = AssignmentStore(file, clock)
         store.saveSuccess(listOf(physics, hausaufgabe))

@@ -139,11 +139,14 @@ class AssignmentStore(
         val loaded = runCatching {
             if (file.exists()) json.decodeFromString<WidgetState>(file.readText()) else null
         }.getOrNull() ?: WidgetState()
+        // Nothing on the list is remembered as handed in (see [remembering]). A file saved by 0.2.0
+        // can say otherwise: a sync then put work back on the list without forgetting its hand-in.
+        val tidy = loaded.remembering(loaded.handedIn, loaded.handedInWork)
         // A sync can't outlive the process, so a saved Running status means it was killed mid-sync.
-        return if (loaded.status is SyncStatus.Running) {
-            loaded.copy(status = SyncStatus.Failed(INTERRUPTED, clock.millis()))
+        return if (tidy.status is SyncStatus.Running) {
+            tidy.copy(status = SyncStatus.Failed(INTERRUPTED, clock.millis()))
         } else {
-            loaded
+            tidy
         }
     }
 
