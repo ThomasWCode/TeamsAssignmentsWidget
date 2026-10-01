@@ -118,11 +118,19 @@ class AssignmentStore(
      * assignments behind what's left. Work on the list is open again, however it got back there:
      * a sync found it, or its hand-in was seen undone. Left remembered, a later hand-in would keep
      * the first one's time, and a list Teams hasn't refreshed could add it back too soon.
+     *
+     * Work handed in before the list had given it its Teams id is remembered under the key that
+     * stood in for one, made from its class and title. It counts as listed once the list holds
+     * work of that class and title, due at the same time, under whichever key. Left remembered
+     * beside a later hand-in under the Teams id, the two would both answer to the same screen.
      */
     private fun WidgetState.remembering(handedIn: Map<String, Long>, work: List<Assignment>): WidgetState {
-        val listed = assignments.mapTo(HashSet()) { it.key }
-        val kept = handedIn.filterKeys { it !in listed }
-        return copy(handedIn = kept, handedInWork = work.associateBy { it.key }.values.filter { it.key in kept })
+        val behind = work.associateBy { it.key }
+        val kept = handedIn.filterKeys { key ->
+            val then = behind[key]
+            assignments.none { it.key == key || (then != null && it.dueAt == then.dueAt && Assignment.fallbackKey(it.className, it.title) == key) }
+        }
+        return copy(handedIn = kept, handedInWork = behind.values.filter { it.key in kept })
     }
 
     private fun recent(handedIn: Map<String, Long>, now: Long) = handedIn.filterValues { now - it in 0 until HANDED_IN_MEMORY_MS }
