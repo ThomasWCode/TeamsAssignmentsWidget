@@ -18,7 +18,7 @@ Tapping a row opens Teams and taps that assignment's card for you. Cards are fou
 
 ### Handing in
 
-Each row has a **Hand in** button. It asks first ("Hand in late?" once the work is overdue). Then the service opens the assignment the way a row tap does, checks that the screen is that assignment's (its title exactly) and still not handed in, and presses Teams' own **Hand in** (or **Hand in late**) button once. When Teams shows it as handed in, the row goes and the phone returns to the home screen.
+Each row has a **Hand in** button. It asks first ("Hand in late?" once the work is overdue). Then the service opens the assignment the way a row tap does, checks that the screen is that assignment's (its title exactly) and still not handed in, and presses Teams' own **Hand in** button once (**Hand in late** on overdue work, **Hand in again** once a hand-in has been undone). When Teams shows it as handed in, the row goes and the phone returns to the home screen. Either way, a short message near the bottom of the screen says how it went.
 
 - It hands in whatever work is already attached in Teams. It can't attach anything.
 - **Cancel** on the pill works until Hand in is pressed. From then on, the hand-in can't be called off.
@@ -39,7 +39,7 @@ When you open Assignments in Teams yourself, the app reads what's on screen, wit
 
 A list only counts once it has fully loaded, by the same tests a sync uses: the tab is selected, nothing is loading, the cards have stayed the same for 0.6 s (an empty list for 2 s, or 6 s if that tab had work at the last sync), and a tab you've just switched to isn't still showing the last tab's cards. *In full* means every card. Teams currently puts the whole list where the app can read it, cards off screen included, so one look is enough; if an update ever stopped that, you'd have to scroll from one end of the list to the other, pausing as you go, for it to count.
 
-Work falling due around the time you looked is left alone, since it may simply have moved from one list to the other. And anything taken as handed in this way comes back as soon as a list shows it again. Work Teams has shown as handed in, or that the widget handed in, isn't added back for 12 hours, even by a list Teams hasn't refreshed yet, and the app remembers this across restarts. A sync (↻) goes by Teams' lists alone.
+Work falling due around the time you looked is left alone, since it may simply have moved from one list to the other. And anything taken as handed in this way comes back as soon as a list shows it again. Work Teams has shown as handed in, or that the widget handed in, isn't added back for 12 hours, even by a list Teams hasn't refreshed yet, and the app remembers this across restarts. If you undo the hand-in, the assignment's own screen brings it back as it was. A sync (↻) goes by Teams' lists alone.
 
 ### Safety and privacy
 
@@ -125,17 +125,15 @@ scripts/       derive_fixtures.py: builds the edge-case fixtures from the captur
 - the service switched off and back on;
 - light and dark themes;
 - resizing down to the launcher's smallest size, 3×2;
-- handing in from the widget, late and on time, and cancelling one;
-- reading along while Teams is open: instructions saved on opening an assignment, from the list or after a row tap, and an assignment handed in within Teams taken off the list;
+- handing in from the widget, late, on time and again after an undo, and cancelling one;
+- reading along while Teams is open: instructions saved on opening an assignment, from the list, from Teams' Activity feed or after a row tap, an assignment handed in within Teams taken off the list, and one whose hand-in was undone there brought back;
 - work handed in on another device: taken off once both open lists have been seen close together (and not on one list alone, or on two seen more than 10 minutes apart), taken off by a row tap or a hand-in that finds it on neither, and brought back once the hand-in is undone.
 
-The 1 October run, and what it turned up, is under [Deferred live tests](docs/teams-ui-notes.md#deferred-live-tests). **Not checked:** work opened from a Teams notification, and the Hand in pill's icon form (below 250 dp, narrower than this phone's launcher allows).
+The 1 October run, what it turned up, and the fixes that followed in 0.2.1, are under [Deferred live tests](docs/teams-ui-notes.md#deferred-live-tests). **Not checked:** work opened from a Teams notification, and the Hand in pill's icon form (below 250 dp, narrower than this phone's launcher allows).
 
 ## Known limitations
 
 - **Tied to the Teams app's layout and English (en-GB) wording.** An update to Teams can break syncing until `TeamsSelectors.kt` is updated.
 - **Takes over the screen while syncing** and while handing in. Syncing is manual only, and doesn't run while the phone is locked; browsing Assignments in Teams updates the list without taking over. The widget still redraws at midnight and as deadlines pass, from saved data, so "Today" and "Overdue" stay right.
 - Assignments you've handed in, and anything older than Teams' *Past due* list, aren't shown.
-- **A row tap or hand-in reports nothing when it ends.** The service says how each went with a toast, and Android drops toasts from an app in the background that has no notification permission. The widget and Teams still show what happened.
-- **Work whose hand-in was undone can't be handed in from the widget.** Teams' button then reads *Hand in again*, which isn't matched yet.
-- **An assignment opened from Teams' Activity feed isn't read**: that screen lacks the *Assignments* subtitle reading along looks for. Opening it from the Assignments list, or a sync, picks it up.
+- **A hand-in undone on another device isn't noticed from a list for 12 hours**, as a list alone can't be told from one Teams hasn't refreshed. Opening the assignment in Teams, or a sync, brings it back.
