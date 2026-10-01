@@ -314,7 +314,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 // Handed in lately, and still listed: a list Teams hasn't refreshed, unless its own
                 // screen has shown it open since, which is how it came to be saved again. Remembered
                 // without its Teams id, it is told by its title, class and due time instead.
-                val handedInLately = card.id in recentlyHandedIn || handedInUnkeyed.any { sameRow(it, card, dueAt) }
+                val handedInLately = card.id in recentlyHandedIn || handedInUnkeyed.any { sameWork(it, card, dueAt) }
                 if (handedInLately && unkeyed < 0) continue
 
                 val added = Assignment(
@@ -475,6 +475,16 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             TeamsScreens.sameTitle(card.title, saved.title) &&
                 (card.collapsed || classMatches(saved.className, card.className)) &&
                 dueAt != null && dueAt == saved.dueAt
+
+        /**
+         * Whether [card] shows [work], handed in lately and remembered without a GUID. Unlike
+         * [sameRow], a collapsed card's class counts here: another class can set work of the same
+         * title for the same time, and passing its card by would keep it off the list. Only a class
+         * left unknown, on either side, stands for any.
+         */
+        private fun sameWork(work: Assignment, card: ListCard, dueAt: Long?): Boolean =
+            TeamsScreens.sameTitle(card.title, work.title) && dueAt != null && dueAt == work.dueAt &&
+                (work.className.isEmpty() || card.className.isEmpty() || classMatches(work.className, card.className))
 
         /** Class names as the toolbar and a card show them; a collapsed card's may start with its tag. */
         private fun classMatches(a: String, b: String): Boolean = a == b || a.endsWith(" $b") || b.endsWith(" $a")

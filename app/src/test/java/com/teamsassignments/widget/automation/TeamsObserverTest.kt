@@ -605,6 +605,33 @@ class TeamsObserverTest {
     }
 
     @Test
+    fun `a collapsed card is only passed by for work of its own class`() {
+        // Codex review: a collapsed card's class was left out of the comparison, as it is when a
+        // saved row takes its Teams id from one. Two classes can set work of one title for one
+        // time, and the other class's card was kept off the list for 12 hours.
+        val handedIn = merge(TeamsObserver().see("detail_4c958b24"), emptyList()).assignments.single()
+        fun collapsed(id: String, className: String) = Sighting.OnList(
+            Tab.Forthcoming,
+            listOf(
+                ListCard(
+                    id = id, title = "Particle Physics Test", dueLine = "Due at 08:30", className = className, tag = null,
+                    headerDate = "29 Sept", headerLabel = "Tomorrow", collapsed = true, bounds = IntRect.EMPTY,
+                ),
+            ),
+        )
+        val remembered = mapOf<String, Assignment?>(handedIn.key to handedIn)
+
+        val otherClass = merge(collapsed("11111111-2222-3333-4444-555555555555", "Chemistry 12.1-CH2"), emptyList(), recentlyHandedIn = remembered)
+        assertEquals("Chemistry 12.1-CH2", otherClass.assignments.single().className)
+
+        // Its own class's card is passed by, tag in front of the class or not, as is one of no known class.
+        listOf("12.2-PH3", "Challenge 12.2-PH3", "").forEach { className ->
+            val same = merge(collapsed(physics, className), emptyList(), recentlyHandedIn = remembered)
+            assertTrue(same.assignments.isEmpty(), className)
+        }
+    }
+
+    @Test
     fun `the list gives a row its Teams id once its own screen has shown the hand-in undone`() {
         // Work seen on Completed is remembered by its id alone, so its own screen can only add it
         // back without one. The list then supplies the id, where otherwise it would pass the card by.

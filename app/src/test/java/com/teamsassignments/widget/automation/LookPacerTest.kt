@@ -79,4 +79,18 @@ class LookPacerTest {
         pacer.looked(Outcome.Read, 13_300)
         assertTrue(pacer.shouldLook(14_000, screenChanged = false))
     }
+
+    @Test
+    fun `another screen opening gets its own quick looks, whatever the last page used up`() {
+        // Codex review: the count stood at its limit after another app's page, so an assignment
+        // opened from that page, and caught loading, waited five seconds like the page before it.
+        val pacer = LookPacer()
+        repeat(5) { pacer.looked(Outcome.Unsure, 700L * it) }
+        assertFalse(pacer.shouldLook(3_500, screenChanged = false))
+
+        assertTrue(pacer.shouldLook(3_600, screenChanged = true))
+        pacer.looked(Outcome.Unsure, 3_600)
+        assertTrue(pacer.owed)
+        assertTrue(pacer.shouldLook(4_300, screenChanged = false))
+    }
 }

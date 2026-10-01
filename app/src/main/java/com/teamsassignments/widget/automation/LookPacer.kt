@@ -40,6 +40,9 @@ class LookPacer(private val recheckMs: Long = 5_000, private val maxFailures: In
      * Teams has opened another screen since the last look.
      */
     fun shouldLook(now: Long, screenChanged: Boolean): Boolean {
+        // Another screen starts the count afresh: it may be an assignment's, opened from a page
+        // that had used up its looks.
+        if (screenChanged) failures = 0
         val lastElsewhere = elsewhereAt
         if (lastElsewhere != null && !screenChanged && now - lastElsewhere < recheckMs) {
             owed = true
@@ -61,7 +64,7 @@ class LookPacer(private val recheckMs: Long = 5_000, private val maxFailures: In
             }
             Outcome.Failed -> owed = ++failures < maxFailures
             // The count stands once it's reached, so a page that stays unplaced gets one look at a
-            // time from then on; a read, or leaving the page, starts it afresh.
+            // time from then on; a read, leaving the page, or another screen opening starts it afresh.
             Outcome.Unsure -> if (++failures < maxFailures) {
                 elsewhereAt = null
                 owed = true
