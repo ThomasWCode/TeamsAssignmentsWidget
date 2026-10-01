@@ -54,13 +54,14 @@ class AssignmentStore(
         it.copy(status = SyncStatus.Stopped(cancelled, clock.millis()))
     }
 
+    /** Saves a sync's list. Work it found open again is no longer remembered as handed in (see [remembering]). */
     suspend fun saveSuccess(assignments: List<Assignment>) = update { state ->
         state.copy(
             assignments = assignments,
             lastSuccessAt = clock.millis(),
             status = SyncStatus.Idle,
             classColors = ClassColors.assign(state.classColors, assignments.map { it.className }),
-        )
+        ).remembering(recent(state.handedIn, clock.millis()), state.handedInWork)
     }
 
     /**
@@ -81,22 +82,16 @@ class AssignmentStore(
     /** The keys handed in over the last [HANDED_IN_MEMORY_MS] (see [WidgetState.handedIn]). */
     fun recentlyHandedIn(): Set<String> = recent(state.value.handedIn, clock.millis()).keys
 
-    /**
-     * What reading along made of the list, the keys it saw handed in, to remember, and those
-     * whose hand-in it saw [undone], to forget.
-     */
-    data class Observed(
-        val assignments: List<Assignment>,
-        val handedIn: Collection<String> = emptyList(),
-        val undone: Collection<String> = emptyList(),
-    )
+    /** What reading along made of the list, and the keys it saw handed in, to remember. */
+    data class Observed(val assignments: List<Assignment>, val handedIn: Collection<String> = emptyList())
 
     /**
      * Applies what was seen in Teams outside a sync (see TeamsObserver). [transform] gets the list
      * and what was handed in lately: each key, with the assignment as it stood if it was on the
      * list. A running sync owns the list, so nothing changes while one is; the sync time and status
      * are kept either way. Keys newly seen handed in are remembered even when the list is
-     * unchanged; those already remembered keep their time.
+     * unchanged; those already remembered keep their time. Work [transform] puts back on the list,
+     * its hand-in undone, is forgotten (see [remembering]).
      */
     suspend fun applyObserved(transform: (List<Assignment>, Map<String, Assignment?>) -> Observed) = update { state ->
         if (state.status is SyncStatus.Running) return@update state
@@ -104,24 +99,31 @@ class AssignmentStore(
         val lately = recent(state.handedIn, now)
         val observed = transform(state.assignments, lately.keys.associateWith { key -> state.handedInWork.firstOrNull { it.key == key } })
         val newlyHandedIn = observed.handedIn.filterNot { it in lately }
-        val undone = observed.undone.filter { it in lately }
-        if (observed.assignments == state.assignments && newlyHandedIn.isEmpty() && undone.isEmpty()) {
+        if (observed.assignments == state.assignments && newlyHandedIn.isEmpty()) {
             state
         } else {
             state.copy(
                 assignments = observed.assignments,
                 classColors = ClassColors.assign(state.classColors, observed.assignments.map { it.className }),
             ).remembering(
-                handedIn = lately - undone.toSet() + newlyHandedIn.associateWith { now },
+                handedIn = lately + newlyHandedIn.associateWith { now },
                 // What just went from the list, should its hand-in be undone.
                 work = state.handedInWork + state.assignments.filter { it.key in newlyHandedIn },
             )
         }
     }
 
-    /** With [handedIn] as what's remembered, and of [work] only the assignments behind those keys. */
-    private fun WidgetState.remembering(handedIn: Map<String, Long>, work: List<Assignment>) =
-        copy(handedIn = handedIn, handedInWork = work.associateBy { it.key }.values.filter { it.key in handedIn })
+    /**
+     * With [handedIn] as what's remembered, less whatever is on the list, and of [work] only the
+     * assignments behind what's left. Work on the list is open again, however it got back there:
+     * a sync found it, or its hand-in was seen undone. Left remembered, a later hand-in would keep
+     * the first one's time, and a list Teams hasn't refreshed could add it back too soon.
+     */
+    private fun WidgetState.remembering(handedIn: Map<String, Long>, work: List<Assignment>): WidgetState {
+        val listed = assignments.mapTo(HashSet()) { it.key }
+        val kept = handedIn.filterKeys { it !in listed }
+        return copy(handedIn = kept, handedInWork = work.associateBy { it.key }.values.filter { it.key in kept })
+    }
 
     private fun recent(handedIn: Map<String, Long>, now: Long) = handedIn.filterValues { now - it in 0 until HANDED_IN_MEMORY_MS }
 

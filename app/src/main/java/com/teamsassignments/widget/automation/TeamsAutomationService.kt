@@ -401,7 +401,7 @@ class TeamsAutomationService : AccessibilityService() {
                 sighting, saved, DueDateParser(Clock.systemDefaultZone()), System.currentTimeMillis(), handedInLately,
             )
             changes = merged.changes
-            AssignmentStore.Observed(merged.assignments, merged.handedIn, merged.undone)
+            AssignmentStore.Observed(merged.assignments, merged.handedIn)
         }
         if (changes.isEmpty()) return
         changes.forEach { log.add("Seen in Teams: $it") }

@@ -57,15 +57,14 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
      * showed as handed in (whether or not they were still listed, less those already remembered),
      * and those it took as handed in for being on neither open list. Only the former are
      * remembered as handed in: were the latter wrong, the next look at the list that does show
-     * them would bring them back. [undone] holds the remembered keys whose hand-in Teams showed
-     * as undone, which are to be forgotten.
+     * them would bring them back. Work put back on the list, its hand-in undone, needs no
+     * reporting: the store forgets a hand-in once its work is listed again.
      */
     data class Merged(
         val assignments: List<Assignment>,
         val changes: List<String>,
         val handedIn: List<String> = emptyList(),
         val presumed: List<String> = emptyList(),
-        val undone: List<String> = emptyList(),
     )
 
     /** One open tab seen in full: every card on it, whether any showed as handed in, and when. */
@@ -275,7 +274,6 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             val out = saved.toMutableList()
             val changes = mutableListOf<String>()
             val handedIn = mutableListOf<String>()
-            val undone = mutableListOf<String>()
             for (card in sighting.cards) {
                 val index = out.indexOfFirst { it.key == card.id }
                 // Completed holds work handed in, or closed. A card there still showing a due line
@@ -311,12 +309,9 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 }
                 // A detail screen seen on its own may have saved it already, without its GUID.
                 val unkeyed = out.indexOfFirst { !TeamsSelectors.CARD_ID.matches(it.key) && sameRow(it, card, dueAt) }
-                if (card.id in recentlyHandedIn) {
-                    // Handed in lately, and still listed: a list Teams hasn't refreshed, unless its
-                    // own screen has shown it open since, which is how it came to be saved again.
-                    if (unkeyed < 0) continue
-                    undone += card.id
-                }
+                // Handed in lately, and still listed: a list Teams hasn't refreshed, unless its own
+                // screen has shown it open since, which is how it came to be saved again.
+                if (card.id in recentlyHandedIn && unkeyed < 0) continue
 
                 val added = Assignment(
                     key = card.id,
@@ -352,7 +347,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                     missing
                 }
             }
-            return Merged(out, changes, handedIn, presumed, undone)
+            return Merged(out, changes, handedIn, presumed)
         }
 
         /**
@@ -425,7 +420,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                         detailReadAt = wallClock,
                         lastSyncedAt = wallClock,
                     )
-                    return Merged(saved + restored, listOf("\"$title\" is no longer handed in"), undone = listOf(undone.key))
+                    return Merged(saved + restored, listOf("\"$title\" is no longer handed in"))
                 }
                 val added = Assignment(
                     key = Assignment.fallbackKey(className, title),
