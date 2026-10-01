@@ -568,6 +568,43 @@ class TeamsObserverTest {
     }
 
     @Test
+    fun `gives back the Teams id of work that is also remembered without one`() {
+        // Codex review: work first saved from its own screen is handed in under the key that stood
+        // in for its Teams id. Handed in again once the list had supplied the id, it was remembered
+        // twice, and with two to choose from its screen brought back neither.
+        val before = facts.copy(key = Assignment.fallbackKey(facts.className, facts.title))
+        val undone = merge(
+            TeamsObserver().see("detail_3a5b3795_hand_in_again"), emptyList(),
+            recentlyHandedIn = mapOf(before.key to before, facts.key to facts),
+        )
+        assertEquals(facts.key, undone.assignments.single().key)
+
+        // Two with a Teams id can't be told apart, though: the work comes back as new.
+        val twin = facts.copy(key = "11111111-2222-3333-4444-555555555555")
+        val twins = merge(
+            TeamsObserver().see("detail_3a5b3795_hand_in_again"), emptyList(),
+            recentlyHandedIn = mapOf(twin.key to twin, facts.key to facts),
+        )
+        assertEquals(before.key, twins.assignments.single().key)
+    }
+
+    @Test
+    fun `doesn't add back work handed in before the list had shown it`() {
+        // Such work is remembered without its Teams id, which is all a card was checked against,
+        // so a list Teams hadn't refreshed could add it straight back under that id.
+        val fromDetail = merge(TeamsObserver().see("detail_4c958b24"), emptyList()).assignments.single()
+        assertFalse(TeamsSelectors.CARD_ID.matches(fromDetail.key))
+        val merged = merge(TeamsObserver().see("list_forthcoming"), emptyList(), recentlyHandedIn = mapOf(fromDetail.key to fromDetail))
+        assertEquals(6, merged.assignments.size)
+        assertTrue(merged.assignments.none { it.key == physics })
+
+        // Another week's, due at another time, is nothing to do with it.
+        val lastWeek = fromDetail.copy(dueAt = fromDetail.dueAt!! - 7 * 24 * 3_600_000L)
+        val other = merge(TeamsObserver().see("list_forthcoming"), emptyList(), recentlyHandedIn = mapOf(lastWeek.key to lastWeek))
+        assertEquals(7, other.assignments.size)
+    }
+
+    @Test
     fun `the list gives a row its Teams id once its own screen has shown the hand-in undone`() {
         // Work seen on Completed is remembered by its id alone, so its own screen can only add it
         // back without one. The list then supplies the id, where otherwise it would pass the card by.

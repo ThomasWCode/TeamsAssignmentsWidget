@@ -270,6 +270,28 @@ class AssignmentStoreTest {
     }
 
     @Test
+    fun `a hand-in remembered without a Teams id is forgotten once the list holds that work under its id`() = runTest {
+        // Codex review: only the same key counted, so work handed in before the list had shown it
+        // stayed remembered under its stand-in key after a sync listed it under its Teams id. A
+        // later hand-in was then remembered beside it, and its screen could bring back neither.
+        val unkeyed = physics.copy(key = Assignment.fallbackKey(physics.className, physics.title))
+        val store = AssignmentStore(file, clock)
+        store.saveSuccess(listOf(unkeyed, hausaufgabe))
+        store.markHandedIn(unkeyed.key)
+        assertEquals(setOf(unkeyed.key), store.recentlyHandedIn())
+
+        // Another week's work of that class and title, due at another time, isn't it.
+        store.saveSuccess(listOf(hausaufgabe, physics.copy(dueAt = physics.dueAt!! + 7 * 24 * 3_600_000L)))
+        assertEquals(setOf(unkeyed.key), store.recentlyHandedIn())
+
+        store.saveSuccess(listOf(hausaufgabe, physics))
+        with(store.state.value) {
+            assertTrue(handedIn.isEmpty())
+            assertTrue(handedInWork.isEmpty())
+        }
+    }
+
+    @Test
     fun `a sync keeps the hand-ins of work it doesn't list`() = runTest {
         val store = AssignmentStore(file, clock)
         store.saveSuccess(listOf(physics, hausaufgabe))
