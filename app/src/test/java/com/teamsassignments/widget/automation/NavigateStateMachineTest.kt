@@ -145,6 +145,15 @@ class NavigateStateMachineTest {
     }
 
     @Test
+    fun `takes it as gone once the search has loaded the rest of Past due`() = runTest {
+        // Codex review: looking for the card loads every page, and the whole list then counts.
+        val device = loadMoreDevice().apply { scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due_load_more_end") }
+        val machine = navigate(device)
+        assertFalse(machine.run(gone))
+        assertTrue(machine.notListed)
+    }
+
+    @Test
     fun `doesn't take it as gone when both tabs showed the same cards`() = runTest {
         // Codex review: Past due flashing a spinner, then showing Forthcoming's rows again, passes
         // as Past due's own list, since the list changed on the way. Two identical tabs prove nothing.
