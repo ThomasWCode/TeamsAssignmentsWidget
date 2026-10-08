@@ -4,6 +4,14 @@
     <!-- Lets the setup screen ask to be exempt from battery optimisation (Samsung kills it otherwise). -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Guards provider.AssignmentsProvider. Signature-level: only apps signed with this app's key
+         (Decrastination) are granted it, without asking. Other apps can't even see the list. -->
+    <permission
+        android:name="com.teamsassignments.widget.permission.READ_ASSIGNMENTS"
+        android:description="@string/read_assignments_permission_description"
+        android:label="@string/read_assignments_permission_label"
+        android:protectionLevel="signature" />
+
     <!-- Package visibility: needed to check that Teams is installed. -->
     <queries>
         <package android:name="com.microsoft.teams" />
@@ -84,6 +92,14 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/assignments_widget_info" />
         </receiver>
+
+        <!-- Read-only, for apps holding READ_ASSIGNMENTS (see provider/AssignmentsContract.kt, whose
+             AUTHORITY this must match). android:permission guards queries; call() checks it itself. -->
+        <provider
+            android:name=".provider.AssignmentsProvider"
+            android:authorities="com.teamsassignments.widget.assignments"
+            android:exported="true"
+            android:permission="com.teamsassignments.widget.permission.READ_ASSIGNMENTS" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
