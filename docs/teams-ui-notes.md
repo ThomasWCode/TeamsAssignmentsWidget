@@ -252,6 +252,8 @@ On 8 Oct, with seven assignments overdue, every sync failed with *Couldn't read 
 - **A loading indicator only counts on screen.** One off screen is a list's placeholder, which is about whether the list is whole, not whether it has loaded.
 - **The sync brings the placeholder into view**, which is what makes Teams load the rest, and keeps going while new cards turn up or a placeholder still waits; failing that, it scrolls. `ACTION_SHOW_ON_SCREEN` on the placeholder worked on the phone: Teams answered within 2.6 s, and the sync read all seven cards and saved all 11 assignments. A placeholder that never goes fails the step, so the previous list is kept rather than one that may be short.
 - **A list still waiting to load more isn't whole**, so a row tap or a hand-in never takes work as handed in for being missing from it. Reading along takes its cards in as before; scrolled to its end, the list counts as seen in full, even though its cards haven't changed.
+- **A row tap or hand-in whose card isn't loaded yet** brings in the rest of the list the way a sync does, waiting for each page, rather than giving up after a plain scroll.
+- **The placeholder going counts as a change**, in the sync's settling and in reading along alike: Teams may drop it a moment before the cards it fetched arrive, so the list without it must hold still for 600 ms, as after any change, before it counts as whole.
 
 ## Consequences for the plan
 

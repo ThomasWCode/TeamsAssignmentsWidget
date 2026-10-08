@@ -103,13 +103,29 @@ class NavigateStateMachineTest {
     }
 
     /** The 8 Oct Past due capture: seven cards and Teams' "load more" placeholder below them. */
-    private fun loadMoreDevice() = FakeTeamsDevice(
+    private fun TestScope.loadMoreDevice() = FakeTeamsDevice(
         lists = mapOf(
             Tab.Forthcoming to "list_forthcoming",
             Tab.PastDue to "list_past_due_load_more",
             Tab.Completed to "list_completed",
         ),
+        now = { testScheduler.currentTime },
     )
+
+    @Test
+    fun `opens a card on a page Teams only loads once asked`() = runTest {
+        // Codex review: the card may be on a page not loaded yet, and on the phone a page took
+        // 2.6 s. The placeholder is brought into view and the list waited for, as in a sync. (The
+        // page here is the 28 Sept capture, holding "Text - LESEN".)
+        val device = loadMoreDevice().apply {
+            scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due_loading", 2_600L to "list_past_due")
+        }
+        val target = assignment("d3f67007-3eb3-409e-840f-d8602b70ba8f", "Text - LESEN", AssignmentTab.PastDue)
+
+        assertTrue(navigate(device).run(target))
+        assertEquals(Screen.Detail(target.key, Tab.PastDue), device.screen)
+        assertEquals(1, device.placeholdersShown)
+    }
 
     @Test
     fun `opens a card on a Past due list still waiting to load more`() = runTest {
