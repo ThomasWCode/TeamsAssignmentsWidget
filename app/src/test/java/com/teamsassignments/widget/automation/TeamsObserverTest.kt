@@ -283,6 +283,17 @@ class TeamsObserverTest {
     }
 
     @Test
+    fun `a tab seen only in part since no longer counts as seen in full`() {
+        // Codex review: both tabs seen in full, then Past due waiting to load more. Its earlier
+        // full view may lack what its unloaded pages hold, so it stands for nothing now.
+        val observer = TeamsObserver()
+        observer.see("list_forthcoming")
+        assertNotNull(assertIs<Sighting.OnList>(observer.see("list_past_due", at = 2_000)).openLists)
+
+        assertNull(assertIs<Sighting.OnList>(observer.see("list_past_due_load_more", at = 4_000)).openLists)
+    }
+
+    @Test
     fun `the two open tabs must be seen within ten minutes of each other`() {
         val observer = TeamsObserver()
         val saved = merge(observer.see("list_forthcoming"), listOf(gone)).assignments

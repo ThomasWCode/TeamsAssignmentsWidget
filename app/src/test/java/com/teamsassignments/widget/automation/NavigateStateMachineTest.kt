@@ -185,6 +185,21 @@ class NavigateStateMachineTest {
     }
 
     @Test
+    fun `doesn't take a paged tab's rows for the next tab's when finding by title either`() = runTest {
+        // Codex review: work saved without a Teams id pages the tab looking for a match, and when
+        // there's none the rows it paged in must still be the next tab's baseline (derived, as above).
+        val physics = TeamsScreens.cards(Fixtures.load("list_forthcoming")).single { it.id.startsWith("4c958b24") }
+        val device = loadMoreDevice().apply {
+            scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due")
+            slowTabs[Tab.Forthcoming] = "list_forthcoming_stale_past_due_rows" to 2_000L
+        }
+        val target = assignment(Assignment.fallbackKey(physics.className, physics.title), physics.title, AssignmentTab.PastDue, physics.className)
+
+        assertTrue(navigate(device).run(target))
+        assertEquals(Screen.Detail(physics.id, Tab.Forthcoming), device.screen)
+    }
+
+    @Test
     fun `takes it as gone once the search has loaded the rest of Past due`() = runTest {
         // Codex review: looking for the card loads every page, and the whole list then counts.
         val device = loadMoreDevice().apply { scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due_load_more_end") }

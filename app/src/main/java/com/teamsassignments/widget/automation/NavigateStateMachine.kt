@@ -73,7 +73,12 @@ class NavigateStateMachine(
             } else {
                 // Saved without a Teams id: found by title and class, on a later page should Teams page the list.
                 val matches: (ListCard) -> Boolean = { it.title == target.title && (it.className == target.className || it.collapsed) }
-                (cards.firstOrNull(matches) ?: pagedFor(tab, cards, matches))?.id ?: continue
+                (cards.firstOrNull(matches) ?: pagedFor(tab, cards, matches))?.id
+            }
+            if (id == null) {
+                // Not on this tab. The rows its search paged in are the ones the next tab mustn't be mistaken for.
+                rowsNow(tab)?.let { previousTab = it }
+                continue
             }
             // openCard loads the rest of a paged list, or scrolls, for a card that isn't in the tree,
             // and checks the detail screen against the title the card shows now, so a card renamed
@@ -91,8 +96,7 @@ class NavigateStateMachine(
             }
             // The search may have loaded the rest of a paged list: judge the tab again as it stands
             // now, and take all its rows as the ones the next tab mustn't be mistaken for.
-            val now = device.teamsRoot()?.takeIf { TeamsScreens.selectedTab(it) == tab && TeamsScreens.isList(it) }
-            val all = now?.let(TeamsScreens::cards) ?: continue
+            val all = rowsNow(tab) ?: continue
             previousTab = all
             if (hasGuid && tab !in missingFrom && all.none { it.id == target.key } && readInFull(all)) missingFrom[tab] = all.map { it.id }.toSet()
         }
@@ -106,6 +110,10 @@ class NavigateStateMachine(
         log(if (notListed) "\"${target.title}\" is on neither Forthcoming nor Past due" else "Couldn't find \"${target.title}\"")
         return false
     }
+
+    /** [tab]'s cards as the list shows them now, or null if Teams isn't showing that list. */
+    private fun rowsNow(tab: Tab): List<ListCard>? =
+        device.teamsRoot()?.takeIf { TeamsScreens.selectedTab(it) == tab && TeamsScreens.isList(it) }?.let(TeamsScreens::cards)
 
     /**
      * For work saved without a Teams id: the first card on [tab]'s list that [matches], loading
