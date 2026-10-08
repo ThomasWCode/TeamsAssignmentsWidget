@@ -43,8 +43,30 @@ class FakeTeamsDevice(
     /** Cards whose detail screen was opened, by either means, in order. */
     val opened = mutableListOf<String>()
 
-    /** Scroll actions requested (none ever moves: the captures already hold every card). */
+    /**
+     * Scroll actions requested. None moves a list unless [scrollsTo] says so: the captures hold
+     * every card Teams had loaded.
+     */
     val scrolls = mutableListOf<UiAction>()
+
+    /**
+     * Lists that change once scrolled, as Teams' do when a "load more" placeholder comes into
+     * view: the first forward scroll, or the placeholder asked onto the screen, starts that tab
+     * on these fixtures, each shown from so many milliseconds after (the first from 0), the last
+     * from then on. Timed steps need [now] to run on the test's clock.
+     */
+    val scrollsTo = mutableMapOf<Tab, List<Pair<Long, String>>>()
+    private val scrolledTo = mutableMapOf<Tab, Pair<Long, List<Pair<Long, String>>>>()
+
+    /**
+     * How many forward scrolls a tab's list takes to reach its [scrollsTo] fixtures (1 if not
+     * given). The scrolls before move it down without changing what it holds.
+     */
+    val scrollsToReach = mutableMapOf<Tab, Int>()
+
+    /** Placeholders asked onto the screen with [UiAction.ShowOnScreen], and whether that works. */
+    var placeholdersShown = 0
+    var showingPlaceholderWorks = true
 
     /** Where the deep link lands; the Forthcoming list by default. */
     var launchLandsOn: Screen = Screen.List(Tab.Forthcoming)
@@ -104,6 +126,7 @@ class FakeTeamsDevice(
 
     /** What a list tab shows right now, allowing for [slowTabs]. */
     private fun listFixture(tab: Tab): String {
+        scrolledTo[tab]?.let { (at, steps) -> return steps.last { (from, _) -> now() - at >= from }.second }
         val (loading, forMs) = slowTabs[tab] ?: return lists.getValue(tab)
         return if (now() - tabShownAt < forMs) loading else lists.getValue(tab)
     }
@@ -193,15 +216,44 @@ class FakeTeamsDevice(
     private fun onAction(node: FakeNode, action: UiAction): Boolean {
         val handled = when (action) {
             UiAction.Click -> click(node)
-            UiAction.ShowOnScreen -> true
-            // The captured lists hold every card, so there is never anything more to scroll to.
-            UiAction.ScrollForward, UiAction.ScrollBackward -> {
+            UiAction.ShowOnScreen -> {
+                if (node.className.endsWith("ProgressBar")) {
+                    placeholdersShown++
+                    if (showingPlaceholderWorks) scrollList()
+                }
+                true
+            }
+            // Unless [scrollsTo] has another fixture for this list, there is nothing more to scroll to.
+            UiAction.ScrollForward -> {
+                scrolls += action
+                scrollForward()
+            }
+            UiAction.ScrollBackward -> {
                 scrolls += action
                 false
             }
         }
         afterAction(this)
         return handled
+    }
+
+    /** One screen down: on the way to the [scrollsTo] fixtures, or there ([scrollsToReach]). */
+    private fun scrollForward(): Boolean {
+        val tab = (screen as? Screen.List)?.tab ?: return false
+        if (tab !in scrollsTo) return false
+        val left = scrollsToReach[tab] ?: 1
+        if (left > 1) {
+            scrollsToReach[tab] = left - 1
+            return true
+        }
+        return scrollList()
+    }
+
+    /** Starts the list on screen on its [scrollsTo] fixtures, if it has some left to move to. */
+    private fun scrollList(): Boolean {
+        val tab = (screen as? Screen.List)?.tab ?: return false
+        scrolledTo[tab] = now() to (scrollsTo.remove(tab) ?: return false)
+        return true
     }
 
     private fun click(node: FakeNode): Boolean {

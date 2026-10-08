@@ -80,8 +80,12 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
     }
 
     private var candidate: Sighting? = null
+    private var candidateWhole = false
     private var candidateSince = 0L
     private var lastUsed: Sighting? = null
+
+    /** Whether the list behind [lastUsed] was whole in the tree ([TeamsScreens.wholeListInTree]). */
+    private var lastUsedWhole = false
 
     /** The last list looked at, trusted or not, and the rows that showed when its tab was selected. */
     private var lastSeenList: Sighting.OnList? = null
@@ -100,6 +104,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
     fun reset() {
         candidate = null
         lastUsed = null
+        lastUsedWhole = false
         lastSeenList = null
         rowsAtSwitch = null
         changedSinceSwitch = true
@@ -122,7 +127,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             return null
         }
         if (TeamsScreens.isDetail(root)) {
-            val detail = TeamsScreens.detail(root)?.takeIf { it.title != null && !TeamsScreens.isLoadingOnScreen(root) }
+            val detail = TeamsScreens.detail(root)?.takeIf { it.title != null && !TeamsScreens.isLoading(root) }
             val seen = detail?.let { Sighting.OnDetail(it, TeamsScreens.classInToolbar(root)) }
             if (!heldStill(seen, now, config.settleMs) || seen == lastUsed) return null
             lastUsed = seen
@@ -137,9 +142,9 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
     }
 
     private fun lookAtList(root: UiNode, tab: Tab, now: Long, wallClock: Long, saved: List<Assignment>): Sighting? {
-        // The sync's test for a loading list. Completed alone keeps a "load more" placeholder off
-        // screen for as long as it's open, so there only an indicator on screen counts.
-        val loading = if (tab == Tab.Completed) TeamsScreens.isLoadingOnScreen(root) else TeamsScreens.isLoading(root)
+        // The sync's test for a loading list: an indicator on screen. A "load more" placeholder off
+        // screen only means the list may not be whole yet, which fullView allows for.
+        val loading = TeamsScreens.isLoading(root)
         val seen = Sighting.OnList(tab, TeamsScreens.cards(root).map { it.copy(bounds = IntRect.EMPTY) })
         noteSwitch(seen, loading)
         if (loading) {
@@ -152,26 +157,38 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             else -> config.emptySettleMs
         }
         // Until the list has changed since its tab was selected, the rows may be the last tab's.
-        if (!heldStill(seen, now, hold) || !changedSinceSwitch || seen == lastUsed) return null
+        // Whether it's whole is part of what must hold still: Teams may drop its "load more"
+        // placeholder a moment before the cards it fetched arrive. Once it has held, a list
+        // becoming whole is news even with the same cards.
+        val whole = TeamsScreens.wholeListInTree(root)
+        if (!heldStill(seen, now, hold, whole) || !changedSinceSwitch || (seen == lastUsed && whole == lastUsedWhole)) return null
         lastUsed = seen
+        lastUsedWhole = whole
         val openLists = if (tab == Tab.Completed) {
             completedIds = seen.cards.map { it.id }.toSet()
             null
         } else {
-            fullView(root, seen, wallClock)?.let { fullViews[tab] = it }
+            // A tab seen in part now, its "load more" placeholder waiting say, may hold more than an
+            // earlier view of it in full did: that view no longer stands for it.
+            val view = fullView(root, seen, wallClock)
+            if (view != null) fullViews[tab] = view else fullViews.remove(tab)
             bothInFull()
         }
         return seen.copy(openLists = openLists)
     }
 
-    /** Whether [seen] has held still for [hold] milliseconds. Sets [settling] while it hasn't yet. */
-    private fun heldStill(seen: Sighting?, now: Long, hold: Long): Boolean {
+    /**
+     * Whether [seen], and for a list whether it was [whole], has held still for [hold]
+     * milliseconds. Sets [settling] while it hasn't yet.
+     */
+    private fun heldStill(seen: Sighting?, now: Long, hold: Long, whole: Boolean = false): Boolean {
         if (seen == null) {
             candidate = null
             return false
         }
-        if (seen != candidate) {
+        if (seen != candidate || whole != candidateWhole) {
             candidate = seen
+            candidateWhole = whole
             candidateSince = now
             settling = true
             return false
@@ -222,7 +239,8 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         if (ids.isNotEmpty()) covered.lastIds = ids
         TeamsScreens.listInView(root)?.let {
             covered.sawTop = covered.sawTop || it.top
-            covered.sawBottom = covered.sawBottom || it.bottom
+            // Not the end while Teams' "load more" placeholder still waits below the last card.
+            covered.sawBottom = covered.sawBottom || (it.bottom && !TeamsScreens.loadMorePending(root))
         }
         return FullView(covered.ids.toSet(), covered.anyHandedIn, wallClock).takeIf { covered.sawTop && covered.sawBottom }
     }

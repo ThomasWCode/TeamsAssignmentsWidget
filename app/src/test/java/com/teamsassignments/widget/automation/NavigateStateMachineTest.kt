@@ -102,6 +102,112 @@ class NavigateStateMachineTest {
         assertFalse(machine.notListed)
     }
 
+    /** The 8 Oct Past due capture: seven cards and Teams' "load more" placeholder below them. */
+    private fun TestScope.loadMoreDevice() = FakeTeamsDevice(
+        lists = mapOf(
+            Tab.Forthcoming to "list_forthcoming",
+            Tab.PastDue to "list_past_due_load_more",
+            Tab.Completed to "list_completed",
+        ),
+        now = { testScheduler.currentTime },
+    )
+
+    @Test
+    fun `opens a card on a page Teams only loads once asked`() = runTest {
+        // Codex review: the card may be on a page not loaded yet, and on the phone a page took
+        // 2.6 s. The placeholder is brought into view and the list waited for, as in a sync. (The
+        // page here is the 28 Sept capture, holding "Text - LESEN".)
+        val device = loadMoreDevice().apply {
+            scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due_loading", 2_600L to "list_past_due")
+        }
+        val target = assignment("d3f67007-3eb3-409e-840f-d8602b70ba8f", "Text - LESEN", AssignmentTab.PastDue)
+
+        assertTrue(navigate(device).run(target))
+        assertEquals(Screen.Detail(target.key, Tab.PastDue), device.screen)
+        assertEquals(1, device.placeholdersShown)
+    }
+
+    @Test
+    fun `opens a card on a Past due list still waiting to load more`() = runTest {
+        // On the phone, opening overdue work waited 17 s for the placeholder, then gave up.
+        val device = loadMoreDevice()
+        val target = assignment("66fcdab0-2ed3-44b9-9ea3-3fba18d79567", "Gefahren in den sozialen Netzwerken. Vor- und Nachteile", AssignmentTab.PastDue)
+
+        assertTrue(navigate(device).run(target))
+        assertEquals(Screen.Detail(target.key, Tab.PastDue), device.screen)
+    }
+
+    @Test
+    fun `doesn't take it as gone while Past due may have more to load`() = runTest {
+        val machine = navigate(loadMoreDevice())
+        assertFalse(machine.run(gone))
+        assertFalse(machine.notListed)
+    }
+
+    /** "Text - LESEN" on the 28 Sept Past due capture, standing in for a card on a later page. */
+    private val lesen = TeamsScreens.cards(Fixtures.load("list_past_due")).single { it.id.startsWith("d3f67007") }
+
+    @Test
+    fun `remembers the title a later page shows for a renamed card`() = runTest {
+        // Codex review: a hand-in compares the opened screen with this title, so it must be the
+        // card's current one, whichever page it turned up on.
+        val device = loadMoreDevice().apply { scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due") }
+        val machine = navigate(device)
+
+        assertTrue(machine.run(assignment(lesen.id, "Text (before it was renamed)", AssignmentTab.PastDue)))
+        assertEquals(lesen.title, machine.listedTitle)
+    }
+
+    @Test
+    fun `finds a card saved without a Teams id on a later page`() = runTest {
+        // Codex review: a card added from its own screen has no GUID until a sync, and is matched
+        // by title and class, which must also look past the first page.
+        val device = loadMoreDevice().apply { scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due") }
+        val target = assignment(Assignment.fallbackKey(lesen.className, lesen.title), lesen.title, AssignmentTab.PastDue, lesen.className)
+
+        assertTrue(navigate(device).run(target))
+        assertEquals(Screen.Detail(lesen.id, Tab.PastDue), device.screen)
+    }
+
+    @Test
+    fun `doesn't take the rows a paged tab ended on for the next tab's`() = runTest {
+        // Codex review: after Past due's search paged in more rows, Forthcoming is selected while
+        // those rows still show (derived). They must not pass for Forthcoming's own list, or the
+        // physics test on it would be missed.
+        val device = loadMoreDevice().apply {
+            scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due")
+            slowTabs[Tab.Forthcoming] = "list_forthcoming_stale_past_due_rows" to 2_000L
+        }
+        val target = assignment("4c958b24-de6c-429b-846b-1d02d0cbed0b", "Particle Physics Test", AssignmentTab.PastDue)
+
+        assertTrue(navigate(device).run(target))
+        assertEquals(Screen.Detail(target.key, Tab.Forthcoming), device.screen)
+    }
+
+    @Test
+    fun `doesn't take a paged tab's rows for the next tab's when finding by title either`() = runTest {
+        // Codex review: work saved without a Teams id pages the tab looking for a match, and when
+        // there's none the rows it paged in must still be the next tab's baseline (derived, as above).
+        val physics = TeamsScreens.cards(Fixtures.load("list_forthcoming")).single { it.id.startsWith("4c958b24") }
+        val device = loadMoreDevice().apply {
+            scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due")
+            slowTabs[Tab.Forthcoming] = "list_forthcoming_stale_past_due_rows" to 2_000L
+        }
+        val target = assignment(Assignment.fallbackKey(physics.className, physics.title), physics.title, AssignmentTab.PastDue, physics.className)
+
+        assertTrue(navigate(device).run(target))
+        assertEquals(Screen.Detail(physics.id, Tab.Forthcoming), device.screen)
+    }
+
+    @Test
+    fun `takes it as gone once the search has loaded the rest of Past due`() = runTest {
+        // Codex review: looking for the card loads every page, and the whole list then counts.
+        val device = loadMoreDevice().apply { scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due_load_more_end") }
+        val machine = navigate(device)
+        assertFalse(machine.run(gone))
+        assertTrue(machine.notListed)
+    }
+
     @Test
     fun `doesn't take it as gone when both tabs showed the same cards`() = runTest {
         // Codex review: Past due flashing a spinner, then showing Forthcoming's rows again, passes

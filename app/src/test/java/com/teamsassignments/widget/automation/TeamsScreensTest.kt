@@ -181,13 +181,32 @@ class TeamsScreensTest {
     }
 
     @Test
-    fun `the Completed list's off-screen placeholder isn't loading on screen`() {
-        // Captured: Completed keeps a zero-height ProgressBar (SHIMMER_GROUP) below its last card.
-        val completed = Fixtures.load("list_completed")
-        assertTrue(TeamsScreens.isLoading(completed))
-        assertFalse(TeamsScreens.isLoadingOnScreen(completed))
-        assertTrue(TeamsScreens.isLoadingOnScreen(Fixtures.load("list_past_due_loading")))
-        assertFalse(TeamsScreens.isLoadingOnScreen(Fixtures.load("list_forthcoming")))
+    fun `an off-screen load-more placeholder isn't loading, but leaves the list unfinished`() {
+        // Captured: Completed keeps a zero-height ProgressBar (SHIMMER_GROUP) below its last card,
+        // and on 8 Oct so did Past due, once its seven cards ran off the bottom of the screen.
+        listOf("list_completed", "list_past_due_load_more").forEach { fixture ->
+            val root = Fixtures.load(fixture)
+            assertFalse(TeamsScreens.isLoading(root), fixture)
+            assertTrue(TeamsScreens.loadMorePending(root), fixture)
+            assertFalse(TeamsScreens.wholeListInTree(root), fixture)
+        }
+        assertTrue(TeamsScreens.isLoading(Fixtures.load("list_past_due_loading")))
+        assertFalse(TeamsScreens.loadMorePending(Fixtures.load("list_past_due_loading")))
+        assertFalse(TeamsScreens.loadMorePending(Fixtures.load("list_forthcoming")))
+    }
+
+    @Test
+    fun `scrolled to, the placeholder gives way to the end of the list`() {
+        // Captured on 8 Oct after scrolling Past due to the bottom: the same seven cards, no
+        // placeholder, and "To view older assignments, navigate to an individual class team." below.
+        val pending = Fixtures.load("list_past_due_load_more")
+        val end = Fixtures.load("list_past_due_load_more_end")
+        assertFalse(TeamsScreens.loadMorePending(end))
+        assertFalse(TeamsScreens.isLoading(end))
+        assertTrue(TeamsScreens.wholeListInTree(end))
+        assertEquals(7, TeamsScreens.cards(pending).size)
+        assertEquals(TeamsScreens.cards(pending).map { it.id }, TeamsScreens.cards(end).map { it.id })
+        assertEquals(Tab.PastDue, TeamsScreens.selectedTab(end))
     }
 
     @Test
@@ -232,11 +251,12 @@ class TeamsScreensTest {
 
     @Test
     fun `the tree holds the whole list, scrolled or not`() {
-        // Teams keeps every row in the tree: those out of view have zero height at the edge they're
-        // past, the bottom until reached and the top once scrolled past. The Past due footer too.
+        // Teams keeps every row it has loaded in the tree: those out of view have zero height at the
+        // edge they're past, the bottom until reached and the top once scrolled past. The Past due
+        // footer too. (Completed, still waiting to load more, isn't whole: see above.)
         listOf(
             "list_forthcoming", "list_forthcoming_scrolled", "list_past_due", "list_past_due_earlier_today",
-            "list_completed", "list_past_due_empty",
+            "list_past_due_empty", "list_past_due_load_more_end",
         ).forEach { assertTrue(TeamsScreens.wholeListInTree(Fixtures.load(it)), it) }
         assertEquals(TeamsScreens.ListInView(top = true, bottom = false), TeamsScreens.listInView(Fixtures.load("list_forthcoming")))
         assertEquals(TeamsScreens.ListInView(top = false, bottom = true), TeamsScreens.listInView(Fixtures.load("list_forthcoming_scrolled")))
