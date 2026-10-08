@@ -13,6 +13,9 @@
     <string name="widget_preview_row2_due">09:00 · German</string>
     <string name="widget_preview_hand_in">Hand in</string>
 
+    <string name="read_assignments_permission_label">read your Teams assignments</string>
+    <string name="read_assignments_permission_description">Lets the app read the Teams assignments you haven\'t handed in, and ask Teams Assignments to sync or to open one in Teams.</string>
+
     <string name="automation_service_label">Teams Assignments sync</string>
     <string name="automation_service_summary">Reads your Teams assignments for the home-screen widget, and hands one in when you ask</string>
     <string name="automation_service_description">When you tap refresh on the Teams Assignments widget, this opens Microsoft Teams, reads the assignments you haven\'t handed in (title, class, due date and instructions) and then returns to the home screen. Tapping an assignment on the widget uses it to open that assignment in Teams, and tapping Hand in (once you confirm) uses it to press Teams\' own Hand in button for that assignment.\n\nWhile you have Teams Assignments open yourself, it reads what\'s on screen to keep the widget up to date, without pressing anything. It only reads the Teams app, never hands in anything you haven\'t confirmed, and never submits or changes anything else. Nothing leaves your phone.</string>
