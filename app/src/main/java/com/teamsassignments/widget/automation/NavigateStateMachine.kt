@@ -26,8 +26,9 @@ class NavigateStateMachine(
      * After a [run] that found nothing: whether both open tabs were read in full and neither lists
      * the assignment, so the caller may take it as handed in. In full means a list loaded by the
      * sync's standard (see [awaitSettledList]) and whole in the tree
-     * ([TeamsScreens.wholeListInTree]): a list that isn't never counts, since this doesn't scroll
-     * right through it. Work falling due around the search may just have moved between the tabs,
+     * ([TeamsScreens.wholeListInTree]), judged again after the search for the card, which loads
+     * the rest of a paged list: a list that still isn't whole never counts, since this doesn't
+     * scroll right through it. Work falling due around the search may just have moved between the tabs,
      * so it never counts as missing either, and nor does anything when both tabs showed the very
      * same cards (one tab's rows, still showing after the switch).
      */
@@ -85,6 +86,12 @@ class NavigateStateMachine(
             if (detail != null) {
                 log("Opened \"${detail.title}\"")
                 return true
+            }
+            // The search may have loaded the rest of a paged list: judge the tab again as it stands now.
+            if (hasGuid && tab !in missingFrom) {
+                val now = device.teamsRoot()?.takeIf { TeamsScreens.selectedTab(it) == tab && TeamsScreens.isList(it) }
+                val all = now?.let(TeamsScreens::cards)
+                if (all != null && all.none { it.id == target.key } && readInFull(all)) missingFrom[tab] = all.map { it.id }.toSet()
             }
         }
         val dueDuringSearch = target.dueAt?.let {
