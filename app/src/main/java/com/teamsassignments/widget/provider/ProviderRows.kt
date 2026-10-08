@@ -2,6 +2,7 @@ package com.teamsassignments.widget.provider
 
 import com.teamsassignments.widget.data.SyncStatus
 import com.teamsassignments.widget.data.WidgetState
+import com.teamsassignments.widget.data.widgetOrder
 import com.teamsassignments.widget.provider.AssignmentsContract.Assignments
 import com.teamsassignments.widget.provider.AssignmentsContract.State
 
@@ -14,10 +15,11 @@ internal object ProviderRows {
     /** A projection and its rows, ready for a cursor. */
     class Table(val columns: Array<String>, val rows: List<Array<Any?>>)
 
+    /** In the widget's order, not the store's, which follows the order Teams' tabs were read in. */
     fun assignments(state: WidgetState, projection: Array<String>?): Table =
         Table(
             Assignments.COLUMNS,
-            state.assignments.map {
+            state.assignments.sortedWith(widgetOrder).map {
                 arrayOf(it.key, it.title, it.className, it.description, it.dueText, it.dueAt, it.tab.name, it.detailReadAt, it.lastSyncedAt)
             },
         ).project(projection)
