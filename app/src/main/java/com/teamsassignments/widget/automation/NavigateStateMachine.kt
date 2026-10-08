@@ -26,8 +26,9 @@ class NavigateStateMachine(
      * After a [run] that found nothing: whether both open tabs were read in full and neither lists
      * the assignment, so the caller may take it as handed in. In full means a list loaded by the
      * sync's standard (see [awaitSettledList]) and whole in the tree
-     * ([TeamsScreens.wholeListInTree]): a list that isn't never counts, since this doesn't scroll
-     * right through it. Work falling due around the search may just have moved between the tabs,
+     * ([TeamsScreens.wholeListInTree]), judged again after the search for the card, which loads
+     * the rest of a paged list: a list that still isn't whole never counts, since this doesn't
+     * scroll right through it. Work falling due around the search may just have moved between the tabs,
      * so it never counts as missing either, and nor does anything when both tabs showed the very
      * same cards (one tab's rows, still showing after the switch).
      */
@@ -70,11 +71,16 @@ class NavigateStateMachine(
             val id = if (hasGuid) {
                 target.key
             } else {
-                cards.firstOrNull { it.title == target.title && (it.className == target.className || it.collapsed) }?.id
-                    ?: continue
+                // Saved without a Teams id: found by title and class, on a later page should Teams page the list.
+                val matches: (ListCard) -> Boolean = { it.title == target.title && (it.className == target.className || it.collapsed) }
+                (cards.firstOrNull(matches) ?: pagedFor(tab, cards, matches))?.id
             }
-            listedTitle = cards.firstOrNull { it.id == id && !it.collapsed }?.title
-            // openCard scrolls for a card that isn't in the tree (should the list be virtualised)
+            if (id == null) {
+                // Not on this tab. The rows its search paged in are the ones the next tab mustn't be mistaken for.
+                rowsNow(tab)?.let { previousTab = it }
+                continue
+            }
+            // openCard loads the rest of a paged list, or scrolls, for a card that isn't in the tree,
             // and checks the detail screen against the title the card shows now, so a card renamed
             // since the last sync still opens; the saved title is only a fallback.
             val detail = try {
@@ -83,9 +89,16 @@ class NavigateStateMachine(
                 null
             }
             if (detail != null) {
+                // As the list showed it, whichever page it was on.
+                listedTitle = listedCard?.takeIf { !it.collapsed }?.title
                 log("Opened \"${detail.title}\"")
                 return true
             }
+            // The search may have loaded the rest of a paged list: judge the tab again as it stands
+            // now, and take all its rows as the ones the next tab mustn't be mistaken for.
+            val all = rowsNow(tab) ?: continue
+            previousTab = all
+            if (hasGuid && tab !in missingFrom && all.none { it.id == target.key } && readInFull(all)) missingFrom[tab] = all.map { it.id }.toSet()
         }
         val dueDuringSearch = target.dueAt?.let {
             it in (searchStart - config.movedTabsBeforeMs)..(wallClock() + config.movedTabsAfterMs)
@@ -96,6 +109,26 @@ class NavigateStateMachine(
         notListed = missingFrom.keys.containsAll(TeamsSelectors.OPEN_TABS) && !dueDuringSearch && !sameCards
         log(if (notListed) "\"${target.title}\" is on neither Forthcoming nor Past due" else "Couldn't find \"${target.title}\"")
         return false
+    }
+
+    /** [tab]'s cards as the list shows them now, or null if Teams isn't showing that list. */
+    private fun rowsNow(tab: Tab): List<ListCard>? =
+        device.teamsRoot()?.takeIf { TeamsScreens.selectedTab(it) == tab && TeamsScreens.isList(it) }?.let(TeamsScreens::cards)
+
+    /**
+     * For work saved without a Teams id: the first card on [tab]'s list that [matches], loading
+     * the rest of the list when Teams pages it ([collectRest]). Null if there's none, or Teams
+     * pages nothing more in; what did load is still searched.
+     */
+    private suspend fun pagedFor(tab: Tab, cards: List<ListCard>, matches: (ListCard) -> Boolean): ListCard? {
+        val root = device.teamsRoot() ?: return null
+        if (!TeamsScreens.loadMorePending(root)) return null
+        val all = try {
+            collectRest(tab, cards) { TeamsScreens.cards(it).any(matches) }
+        } catch (_: StepTimeout) {
+            device.teamsRoot()?.let(TeamsScreens::cards).orEmpty()
+        }
+        return all.firstOrNull(matches)
     }
 
     /**
