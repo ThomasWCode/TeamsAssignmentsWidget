@@ -45,9 +45,24 @@ Work falling due around the time you looked is left alone, since it may simply h
 
 - **Syncing and opening only press tabs and assignment cards.** They never press a button, and never *Hand in*, *Attach* or anything else that changes Teams. Taps go to the centre of a card's title, and are refused if a button, the notification shade or the keyboard covers that spot.
 - **Hand in is the one exception, and only when you ask.** Once you confirm on the widget, it presses the *Hand in* button in Teams' toolbar for that assignment, found by its ID, and nothing else: never *Undo hand in*, *Attach* or anything that changes your work.
-- It only acts when you tap ↻, a row or *Hand in*. Otherwise it only reads, and only while Teams shows Assignments. It only receives events from Teams.
-- Everything stays on the phone: a small JSON file in the app's private storage, with nothing backed up or sent anywhere.
+- It only acts when you tap ↻, a row or *Hand in*, or when an app signed with its key asks it to sync or open an assignment (see below). Otherwise it only reads, and only while Teams shows Assignments. It only receives events from Teams.
+- Everything stays on the phone: a small JSON file in the app's private storage, with nothing backed up or sent anywhere. Apps signed with this app's key can read the list through a read-only provider; no other app can.
 - If a sync fails or you cancel it, the previous list stays and the widget says what happened.
+
+### For other apps
+
+Apps signed with this app's key, such as [Decrastination](https://github.com/ThomasWCode/Decrastination), can read the list without the widget, through a read-only content provider. The permission it needs, `com.teamsassignments.widget.permission.READ_ASSIGNMENTS`, is signature-level: Android grants it, without asking, to apps signed with the committed `app/debug.keystore`, and to no other app (`adb shell` included).
+
+| URI or call | What it gives |
+|---|---|
+| `content://com.teamsassignments.widget.assignments/assignments` | One row per assignment not handed in, in the widget's order: `key`, `title`, `class_name`, `description`, `due_text`, `due_at`, `tab`, `detail_read_at`, `last_synced_at` |
+| `content://com.teamsassignments.widget.assignments/state` | One row: `last_success_at`, `status`, `status_message`, `status_at`, `assignment_count`, `sync_service_enabled` |
+| `call(root, "requestSync", null, null)` | Starts a sync, as ↻ does. The result has `started`, and `reason` when it didn't: `service_off` or `busy` |
+| `call(root, "open", key, null)` | Opens that assignment in Teams, as a row tap does. One more `reason`: `unknown_key` |
+
+Observers of either URI, or of the root `content://com.teamsassignments.widget.assignments`, hear of every change to the list and the sync status. Both calls take over the screen, so an app should only make them when you've just asked it to. Nothing the provider offers hands anything in or changes the list. What each column means is in [`AssignmentsContract.kt`](app/src/main/java/com/teamsassignments/widget/provider/AssignmentsContract.kt).
+
+The key is in this public repository, so the permission keeps out apps from stores and other developers, not one deliberately signed with this key: install only APKs built from your own repositories.
 
 ## Install
 
@@ -113,6 +128,7 @@ app/src/main/java/com/teamsassignments/widget/
                TeamsAutomationService and the Android glue (node snapshots, taps, overlay, dumper)
   widget/      The Glance widget, its receiver, and redraw scheduling
   ui/          Setup screen, the widget's invisible trampoline activities, and its hand-in confirmation
+  provider/    The read-only provider for apps signed with this key, and its contract
 app/src/test/  Unit tests, a fake phone that serves the captures, and the captures themselves
 scripts/       derive_fixtures.py: builds the edge-case fixtures from the captures
 ```
