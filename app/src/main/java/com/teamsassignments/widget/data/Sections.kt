@@ -10,17 +10,19 @@ import java.util.Locale
 /** A date group in the widget: a header and its assignments. */
 data class Section(val bucket: DueBucket, val assignments: List<Assignment>)
 
+/** The widget's order: by due time, undated ones last, then by title. The provider uses it too. */
+val widgetOrder: Comparator<Assignment> =
+    compareBy<Assignment> { it.dueAt == null }
+        .thenBy { it.dueAt ?: 0L }
+        .thenBy { it.title.lowercase() }
+
 /**
- * Sorts assignments by due time (undated ones last) and groups them into [DueBucket]s.
+ * Sorts assignments into [widgetOrder] and groups them into [DueBucket]s.
  * Buckets only move forward in time, so every group comes out contiguous and in display order.
  */
 fun groupIntoSections(assignments: List<Assignment>, parser: DueDateParser): List<Section> =
     assignments
-        .sortedWith(
-            compareBy<Assignment> { it.dueAt == null }
-                .thenBy { it.dueAt ?: 0L }
-                .thenBy { it.title.lowercase() },
-        )
+        .sortedWith(widgetOrder)
         .groupBy { parser.bucket(it.dueAt?.let(Instant::ofEpochMilli)) }
         .map { (bucket, items) -> Section(bucket, items) }
 

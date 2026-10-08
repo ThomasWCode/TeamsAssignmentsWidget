@@ -72,6 +72,16 @@ class ProviderRowsTest {
     }
 
     @Test
+    fun `rows come in the widget's order, not the store's`() {
+        val maths = physics.copy(key = "b0ccf04e", title = "binomial expansion", className = "12-FM", dueAt = physics.dueAt!! - 3_600_000)
+        val statics = maths.copy(key = "d53f5f50", title = "Statics prep")
+        // A sync that starts on Past due, then a look while Teams was open, can leave the store like this.
+        val table = ProviderRows.assignments(WidgetState(assignments = listOf(german, physics, statics, maths)), arrayOf(Assignments.KEY))
+
+        assertEquals(listOf(maths.key, statics.key, physics.key, german.key), table.rows.map { it.single() })
+    }
+
+    @Test
     fun `every row is as wide as its columns`() {
         assertEquals(Assignments.COLUMNS.size, ProviderRows.assignments(saved, null).rows.single { it[0] == german.key }.size)
         assertEquals(State.COLUMNS.size, ProviderRows.state(saved, syncServiceEnabled = true, projection = null).rows.single().size)
