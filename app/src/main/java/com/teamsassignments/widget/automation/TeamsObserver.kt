@@ -168,7 +168,10 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             completedIds = seen.cards.map { it.id }.toSet()
             null
         } else {
-            fullView(root, seen, wallClock)?.let { fullViews[tab] = it }
+            // A tab seen in part now, its "load more" placeholder waiting say, may hold more than an
+            // earlier view of it in full did: that view no longer stands for it.
+            val view = fullView(root, seen, wallClock)
+            if (view != null) fullViews[tab] = view else fullViews.remove(tab)
             bothInFull()
         }
         return seen.copy(openLists = openLists)
