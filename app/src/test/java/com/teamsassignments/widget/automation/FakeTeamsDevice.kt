@@ -58,6 +58,12 @@ class FakeTeamsDevice(
     val scrollsTo = mutableMapOf<Tab, List<Pair<Long, String>>>()
     private val scrolledTo = mutableMapOf<Tab, Pair<Long, List<Pair<Long, String>>>>()
 
+    /**
+     * How many forward scrolls a tab's list takes to reach its [scrollsTo] fixtures (1 if not
+     * given). The scrolls before move it down without changing what it holds.
+     */
+    val scrollsToReach = mutableMapOf<Tab, Int>()
+
     /** Placeholders asked onto the screen with [UiAction.ShowOnScreen], and whether that works. */
     var placeholdersShown = 0
     var showingPlaceholderWorks = true
@@ -220,7 +226,7 @@ class FakeTeamsDevice(
             // Unless [scrollsTo] has another fixture for this list, there is nothing more to scroll to.
             UiAction.ScrollForward -> {
                 scrolls += action
-                scrollList()
+                scrollForward()
             }
             UiAction.ScrollBackward -> {
                 scrolls += action
@@ -229,6 +235,18 @@ class FakeTeamsDevice(
         }
         afterAction(this)
         return handled
+    }
+
+    /** One screen down: on the way to the [scrollsTo] fixtures, or there ([scrollsToReach]). */
+    private fun scrollForward(): Boolean {
+        val tab = (screen as? Screen.List)?.tab ?: return false
+        if (tab !in scrollsTo) return false
+        val left = scrollsToReach[tab] ?: 1
+        if (left > 1) {
+            scrollsToReach[tab] = left - 1
+            return true
+        }
+        return scrollList()
     }
 
     /** Starts the list on screen on its [scrollsTo] fixtures, if it has some left to move to. */
