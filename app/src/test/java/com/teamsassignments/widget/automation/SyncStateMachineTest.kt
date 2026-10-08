@@ -520,6 +520,23 @@ class SyncStateMachineTest {
     }
 
     @Test
+    fun `stops asking Teams to show the placeholder once it ignores that, and scrolls the whole way`() = runTest {
+        // Codex review: alternating the two spent half the scroll allowance on requests Teams
+        // ignored. One request that changes nothing is enough to switch to scrolling.
+        val device = loadMoreDevice().apply {
+            scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due_load_more_end")
+            scrollsToReach[Tab.PastDue] = 10
+            showingPlaceholderWorks = false
+        }
+
+        val result = machine(device).run(loadMoreSaved())
+
+        assertEquals(7, result.count { it.tab == AssignmentTab.PastDue })
+        assertEquals(1, device.placeholdersShown)
+        assertTrue(device.scrolls.count { it == UiAction.ScrollForward } >= 10)
+    }
+
+    @Test
     fun `a list whose placeholder never loads isn't saved, so nothing on it is lost`() = runTest {
         // Saving the seven cards Teams had loaded would drop any it hadn't: the previous list stays.
         val device = loadMoreDevice()

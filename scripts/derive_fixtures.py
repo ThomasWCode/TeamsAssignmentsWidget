@@ -60,6 +60,15 @@ def stale_rows():
     save(tree, "list_past_due_stale_rows")
 
 
+def stale_past_due_rows():
+    """Forthcoming selected while Past due's rows are still showing: the rows a paged Past due ended
+    on, when a row tap searched it and moved on."""
+    tree = load("list_past_due")
+    by_id(tree, "tab-Past-due").set("selected", "false")
+    by_id(tree, "tab-Forthcoming").set("selected", "true")
+    save(tree, "list_forthcoming_stale_past_due_rows")
+
+
 def empty_and_loading():
     """Past due with no cards, then the same with a spinner (Fluent's has role=progressbar)."""
     tree = load("list_past_due")
@@ -206,6 +215,7 @@ def hand_in_disabled():
 if __name__ == "__main__":
     moved_cards()
     stale_rows()
+    stale_past_due_rows()
     empty_and_loading()
     single_card_moved()
     unreadable_detail()

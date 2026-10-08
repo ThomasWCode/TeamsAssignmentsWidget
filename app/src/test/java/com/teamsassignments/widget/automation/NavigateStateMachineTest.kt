@@ -144,6 +144,46 @@ class NavigateStateMachineTest {
         assertFalse(machine.notListed)
     }
 
+    /** "Text - LESEN" on the 28 Sept Past due capture, standing in for a card on a later page. */
+    private val lesen = TeamsScreens.cards(Fixtures.load("list_past_due")).single { it.id.startsWith("d3f67007") }
+
+    @Test
+    fun `remembers the title a later page shows for a renamed card`() = runTest {
+        // Codex review: a hand-in compares the opened screen with this title, so it must be the
+        // card's current one, whichever page it turned up on.
+        val device = loadMoreDevice().apply { scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due") }
+        val machine = navigate(device)
+
+        assertTrue(machine.run(assignment(lesen.id, "Text (before it was renamed)", AssignmentTab.PastDue)))
+        assertEquals(lesen.title, machine.listedTitle)
+    }
+
+    @Test
+    fun `finds a card saved without a Teams id on a later page`() = runTest {
+        // Codex review: a card added from its own screen has no GUID until a sync, and is matched
+        // by title and class, which must also look past the first page.
+        val device = loadMoreDevice().apply { scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due") }
+        val target = assignment(Assignment.fallbackKey(lesen.className, lesen.title), lesen.title, AssignmentTab.PastDue, lesen.className)
+
+        assertTrue(navigate(device).run(target))
+        assertEquals(Screen.Detail(lesen.id, Tab.PastDue), device.screen)
+    }
+
+    @Test
+    fun `doesn't take the rows a paged tab ended on for the next tab's`() = runTest {
+        // Codex review: after Past due's search paged in more rows, Forthcoming is selected while
+        // those rows still show (derived). They must not pass for Forthcoming's own list, or the
+        // physics test on it would be missed.
+        val device = loadMoreDevice().apply {
+            scrollsTo[Tab.PastDue] = listOf(0L to "list_past_due")
+            slowTabs[Tab.Forthcoming] = "list_forthcoming_stale_past_due_rows" to 2_000L
+        }
+        val target = assignment("4c958b24-de6c-429b-846b-1d02d0cbed0b", "Particle Physics Test", AssignmentTab.PastDue)
+
+        assertTrue(navigate(device).run(target))
+        assertEquals(Screen.Detail(target.key, Tab.Forthcoming), device.screen)
+    }
+
     @Test
     fun `takes it as gone once the search has loaded the rest of Past due`() = runTest {
         // Codex review: looking for the card loads every page, and the whole list then counts.

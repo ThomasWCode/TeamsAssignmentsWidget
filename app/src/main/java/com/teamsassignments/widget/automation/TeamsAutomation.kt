@@ -75,6 +75,10 @@ abstract class TeamsAutomation(
     private var teamsSeenAt = 0L
     private var teamsShown = false
 
+    /** The card the last [openCard] went to, as the list showed it then; null if it wasn't found. */
+    protected var listedCard: ListCard? = null
+        private set
+
     private enum class Press { Tap, Click }
 
     protected fun begin() {
@@ -223,11 +227,15 @@ abstract class TeamsAutomation(
 
     /**
      * Brings the rest of [tab]'s list into the tree, for a list Teams pages ([TeamsScreens.loadMorePending])
-     * or one that might be virtualised: each round brings the "load more" placeholder into view,
-     * or scrolls down, then waits for the list to settle, and the rounds go on while new cards
-     * turn up or a placeholder still waits. [found] can end it early, once what's wanted is in
-     * the tree. Returns every card seen from [firstPage] on, in order. A placeholder that never
-     * goes throws [StepTimeout]: what has loaded can't be trusted to be the whole list.
+     * or one that might be virtualised. Each round asks Teams to show the "load more" placeholder,
+     * which is what makes it load, or with none, scrolls one screen down; then it waits for the
+     * list to settle. Rounds go on while new cards turn up or a placeholder still waits. Teams'
+     * web content ignored accessibility clicks on the phone while reporting success, so once a
+     * request to show the placeholder changes nothing, it's scrolled to instead from then on; only
+     * scrolls count against [AutomationConfig.maxScrolls], and showing is capped the same.
+     * [found] can end it early, once what's wanted is in the tree. Returns every card seen from
+     * [firstPage] on, in order. A placeholder that never goes throws [StepTimeout]: what has
+     * loaded can't be trusted to be the whole list.
      */
     protected suspend fun collectRest(
         tab: Tab,
@@ -235,43 +243,41 @@ abstract class TeamsAutomation(
         found: (UiNode) -> Boolean = { false },
     ): List<ListCard> {
         val cards = LinkedHashMap<String, ListCard>().apply { firstPage.forEach { put(it.id, it) } }
-        var rounds = 0
-        while (rounds < config.maxScrolls) {
+        var scrolls = 0
+        var shows = 0
+        var showing = true
+        while (scrolls < config.maxScrolls && shows < config.maxScrolls) {
             checkAbort()
-            // Alternately: should Teams ignore being asked to show the placeholder, a scroll still reaches it.
-            if (!scrollOn(tab, showPlaceholder = rounds % 2 == 0)) break
-            rounds++
+            val root = device.teamsRoot() ?: break
+            val placeholder = TeamsScreens.loadMorePlaceholder(root).takeIf { showing }
+            val showed = placeholder != null && run {
+                log("${tab.label}: bringing \"load more\" into view")
+                placeholder.perform(UiAction.ShowOnScreen)
+            }
+            if (showed) {
+                shows++
+            } else {
+                val scroller = root.walk().firstOrNull { it.isScrollable } ?: break
+                if (TeamsScreens.loadMorePending(root)) log("${tab.label}: scrolling down to \"load more\"")
+                if (!scroller.perform(UiAction.ScrollForward)) break
+                scrolls++
+            }
             val page = awaitSettledList(tab)
             val before = cards.size
             page.forEach { cards.putIfAbsent(it.id, it) }
-            val root = device.teamsRoot()
-            if (root != null && found(root)) return cards.values.toList()
-            val waiting = root?.let(TeamsScreens::loadMorePending) == true
-            if (cards.size == before && !waiting) break
+            val now = device.teamsRoot()
+            if (now != null && found(now)) return cards.values.toList()
+            val waiting = now?.let(TeamsScreens::loadMorePending) == true
+            if (cards.size == before) {
+                if (!waiting) break
+                if (showed) showing = false
+            }
         }
         if (device.teamsRoot()?.let(TeamsScreens::loadMorePending) != false) {
             log("${tab.label}: Teams never loaded the rest of the list")
             throw StepTimeout("the rest of the ${tab.label} list")
         }
         return cards.values.toList()
-    }
-
-    /**
-     * With [showPlaceholder], asks Teams to show its "load more" placeholder, which is what makes
-     * it load; otherwise, or with none, scrolls one screen down. Teams' web content ignored
-     * accessibility clicks on the phone (reporting success), so either may do nothing, which is
-     * why [collectRest] alternates them. False when neither went through.
-     */
-    private fun scrollOn(tab: Tab, showPlaceholder: Boolean): Boolean {
-        val root = device.teamsRoot() ?: return false
-        val placeholder = TeamsScreens.loadMorePlaceholder(root)
-        if (showPlaceholder && placeholder != null) {
-            log("${tab.label}: bringing \"load more\" into view")
-            if (placeholder.perform(UiAction.ShowOnScreen)) return true
-        }
-        val scroller = root.walk().firstOrNull { it.isScrollable } ?: return false
-        if (placeholder != null) log("${tab.label}: scrolling down to \"load more\"")
-        return scroller.perform(UiAction.ScrollForward)
     }
 
     /**
@@ -290,10 +296,13 @@ abstract class TeamsAutomation(
      * it didn't open or the wrong assignment opened (in which case this goes back to the list).
      */
     protected suspend fun openCard(id: String, expectedTitle: String?): DetailScreen? {
+        listedCard = null
         val card = findCardNode(id) ?: run {
             log("Card $id is not on the list")
             return null
         }
+        // As the list shows it now, on whichever page it turned up.
+        listedCard = device.teamsRoot()?.let(TeamsScreens::cards)?.firstOrNull { it.id == id }
         // Check the detail screen against the title the card shows now; the caller's may be from
         // an earlier sync, before a teacher renamed it.
         val expected = TeamsScreens.cardTitle(card) ?: expectedTitle
