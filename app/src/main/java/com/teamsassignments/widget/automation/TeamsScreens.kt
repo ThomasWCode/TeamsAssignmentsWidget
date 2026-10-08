@@ -55,17 +55,28 @@ object TeamsScreens {
      */
     fun windowAtRest(root: UiNode): Boolean = root.bounds.left >= 0 && root.bounds.top >= 0
 
-    /** Whether Teams is showing a loading indicator: a spinner, or a bare "Loading" label. */
+    /**
+     * Whether Teams is showing a loading indicator on screen: a spinner, or a bare "Loading"
+     * label. One off screen is a list's "load more" placeholder, which isn't loading anything
+     * yet: see [loadMorePending].
+     */
     fun isLoading(root: UiNode): Boolean = root.walk().any {
-        it.className.endsWith("ProgressBar") || TeamsSelectors.LOADING_LABEL.matches(it.label.squash())
+        !it.bounds.isEmpty && (it.className.endsWith("ProgressBar") || TeamsSelectors.LOADING_LABEL.matches(it.label.squash()))
     }
 
     /**
-     * [isLoading], counting only indicators on screen. The Completed list keeps a "load more"
-     * placeholder (a `ProgressBar`) off screen below its last card for as long as it's open.
+     * Whether a list still has Teams' "load more" placeholder below its last card: a
+     * `ProgressBar` (`SHIMMER_GROUP`) reported off screen, with zero height, like any row out of
+     * view. Teams only asks for more cards once it scrolls into view, then either adds them or
+     * swaps it for the list's end (on Past due, the *To view older assignments…* footer), so
+     * until then the list may be missing cards. Completed always has one; Past due had one on
+     * the phone on 8 Oct once its seven cards ran off the screen.
      */
-    fun isLoadingOnScreen(root: UiNode): Boolean = root.walk().any {
-        !it.bounds.isEmpty && (it.className.endsWith("ProgressBar") || TeamsSelectors.LOADING_LABEL.matches(it.label.squash()))
+    fun loadMorePending(root: UiNode): Boolean = loadMorePlaceholder(root) != null
+
+    /** The "load more" placeholder of [loadMorePending], to bring into view. */
+    fun loadMorePlaceholder(root: UiNode): UiNode? = root.walk().firstOrNull {
+        it.bounds.isEmpty && it.className.endsWith("ProgressBar")
     }
 
     /** Every card in the tree, in list order, with the group header each sits under. */
@@ -108,11 +119,14 @@ object TeamsScreens {
     /**
      * Whether the tree holds the whole of the selected tab's list, so that one look sees every
      * card: at each end the list runs off screen, the rows beyond it are in the tree. Teams keeps
-     * every row there, reporting those out of view with zero height at the edge they're past (at
-     * the top once scrolled past, at the bottom until reached), so this holds scrolled or not. A
-     * list that only held the rows in view, as a virtualised one would, has to be scrolled through.
+     * every row it has loaded there, reporting those out of view with zero height at the edge
+     * they're past (at the top once scrolled past, at the bottom until reached), so this holds
+     * scrolled or not. A list that only held the rows in view, as a virtualised one would, has to
+     * be scrolled through, as does one whose "load more" placeholder is still waiting to be
+     * reached ([loadMorePending]).
      */
     fun wholeListInTree(root: UiNode): Boolean {
+        if (loadMorePending(root)) return false
         val list = listNode(root) ?: return false
         val view = viewport(root)
         val ends = listInView(root) ?: return false

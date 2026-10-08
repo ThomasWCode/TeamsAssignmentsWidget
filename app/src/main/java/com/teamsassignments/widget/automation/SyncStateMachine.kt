@@ -88,29 +88,57 @@ class SyncStateMachine(
     }
 
     /**
-     * Teams currently puts every card in the tree, off-screen ones included. In case a future
-     * version virtualises the list (where every row in the tree *is* on screen), scroll down while
-     * new cards keep appearing, then back up. Skipped only when the list visibly ends on screen.
+     * Teams puts every card it has loaded in the tree, off-screen ones included, but it loads a
+     * long list in pages: below the last card sits a "load more" placeholder, and more cards only
+     * come once it scrolls into view ([TeamsScreens.loadMorePending]). So bring the placeholder
+     * into view (or, with none, scroll down) while new cards keep appearing or a placeholder is
+     * still waiting, then go back up. That also covers a list a future version might virtualise
+     * (where every row in the tree *is* on screen). Skipped only when the list visibly ends on
+     * screen with nothing left to load. A list whose placeholder never resolves can't be trusted
+     * to be whole, so the step times out, rather than the sync saving a list with cards missing.
      */
     private suspend fun collectMore(tab: Tab, firstPage: List<ListCard>): List<ListCard> {
         val root = device.teamsRoot() ?: return firstPage
-        if (listEndsOnScreen(root, firstPage)) return firstPage
+        if (listEndsOnScreen(root, firstPage) && !TeamsScreens.loadMorePending(root)) return firstPage
         val cards = LinkedHashMap<String, ListCard>().apply { firstPage.forEach { put(it.id, it) } }
         var scrolls = 0
         while (scrolls < config.maxScrolls) {
-            val scroller = device.teamsRoot()?.walk()?.firstOrNull { it.isScrollable } ?: break
-            if (!scroller.perform(UiAction.ScrollForward)) break
+            // Alternately: should Teams ignore being asked to show the placeholder, a scroll still reaches it.
+            if (!scrollOn(tab, showPlaceholder = scrolls % 2 == 0)) break
             scrolls++
             val page = awaitSettledList(tab)
             val before = cards.size
             page.forEach { cards.putIfAbsent(it.id, it) }
-            if (cards.size == before) break
+            val waiting = device.teamsRoot()?.let(TeamsScreens::loadMorePending) == true
+            if (cards.size == before && !waiting) break
+        }
+        if (device.teamsRoot()?.let(TeamsScreens::loadMorePending) != false) {
+            log("${tab.label}: Teams never loaded the rest of the list")
+            throw StepTimeout("the rest of the ${tab.label} list")
         }
         val top = cards.keys.firstOrNull()
         if (scrolls > 0 && top != null) {
             device.teamsRoot()?.let { TeamsScreens.findCard(it, top) }?.perform(UiAction.ShowOnScreen)
         }
         return cards.values.toList()
+    }
+
+    /**
+     * With [showPlaceholder], asks Teams to show its "load more" placeholder, which is what makes
+     * it load; otherwise, or with none, scrolls one screen down. Teams' web content ignored
+     * accessibility clicks on the phone (reporting success), so either may do nothing, which is
+     * why the caller alternates them. False when neither went through.
+     */
+    private fun scrollOn(tab: Tab, showPlaceholder: Boolean): Boolean {
+        val root = device.teamsRoot() ?: return false
+        val placeholder = TeamsScreens.loadMorePlaceholder(root)
+        if (showPlaceholder && placeholder != null) {
+            log("${tab.label}: bringing \"load more\" into view")
+            if (placeholder.perform(UiAction.ShowOnScreen)) return true
+        }
+        val scroller = root.walk().firstOrNull { it.isScrollable } ?: return false
+        if (placeholder != null) log("${tab.label}: scrolling down to \"load more\"")
+        return scroller.perform(UiAction.ScrollForward)
     }
 
     private suspend fun readDetail(tab: Tab, card: ListCard, listDueAt: Long?, old: Assignment?): Assignment? {

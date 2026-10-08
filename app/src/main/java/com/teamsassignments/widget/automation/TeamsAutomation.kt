@@ -177,7 +177,9 @@ abstract class TeamsAutomation(
      *   the list has visibly changed at least once (to other rows, to empty, or to a spinner).
      *   That still lets a card that moved tabs between the two reads through, since the list
      *   changed on the way;
-     * - nothing counts while a loading indicator shows;
+     * - nothing counts while a loading indicator shows on screen. Teams' "load more" placeholder,
+     *   off screen below the last card, isn't one: it only loads once scrolled to, so waiting for
+     *   it would wait forever. Whether the list is complete is for the caller ([TeamsScreens.loadMorePending]);
      * - an empty list must hold for [emptySettleMs] before it is believed.
      * If it never settles, the step times out and the caller keeps the data it had.
      */
