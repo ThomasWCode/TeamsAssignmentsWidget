@@ -263,6 +263,21 @@ class TeamsObserverTest {
     }
 
     @Test
+    fun `reads a Past due list still waiting to load more, but judges it whole only once it has`() {
+        // Captured on 8 Oct: Teams' "load more" placeholder below the seventh card, which reading
+        // along took for a list forever loading. Its cards count; its end doesn't, until reached.
+        val observer = TeamsObserver()
+        val saved = merge(observer.see("list_forthcoming"), listOf(gone)).assignments
+        val pending = merge(observer.see("list_past_due_load_more", at = 2_000), saved)
+        assertTrue(pending.assignments.any { it.key.startsWith("8f3383b9") }, "a card only Past due lists is added")
+        assertTrue(pending.presumed.isEmpty(), "the list may have more to load")
+
+        // Scrolled to the end: the same cards over the list's footer, and now the list is whole.
+        val end = assertNotNull(observer.lookAt(Fixtures.load("list_past_due_load_more_end"), 4_000))
+        assertEquals(listOf(gone.key), merge(end, pending.assignments).presumed)
+    }
+
+    @Test
     fun `the two open tabs must be seen within ten minutes of each other`() {
         val observer = TeamsObserver()
         val saved = merge(observer.see("list_forthcoming"), listOf(gone)).assignments

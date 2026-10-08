@@ -102,6 +102,32 @@ class NavigateStateMachineTest {
         assertFalse(machine.notListed)
     }
 
+    /** The 8 Oct Past due capture: seven cards and Teams' "load more" placeholder below them. */
+    private fun loadMoreDevice() = FakeTeamsDevice(
+        lists = mapOf(
+            Tab.Forthcoming to "list_forthcoming",
+            Tab.PastDue to "list_past_due_load_more",
+            Tab.Completed to "list_completed",
+        ),
+    )
+
+    @Test
+    fun `opens a card on a Past due list still waiting to load more`() = runTest {
+        // On the phone, opening overdue work waited 17 s for the placeholder, then gave up.
+        val device = loadMoreDevice()
+        val target = assignment("66fcdab0-2ed3-44b9-9ea3-3fba18d79567", "Gefahren in den sozialen Netzwerken. Vor- und Nachteile", AssignmentTab.PastDue)
+
+        assertTrue(navigate(device).run(target))
+        assertEquals(Screen.Detail(target.key, Tab.PastDue), device.screen)
+    }
+
+    @Test
+    fun `doesn't take it as gone while Past due may have more to load`() = runTest {
+        val machine = navigate(loadMoreDevice())
+        assertFalse(machine.run(gone))
+        assertFalse(machine.notListed)
+    }
+
     @Test
     fun `doesn't take it as gone when both tabs showed the same cards`() = runTest {
         // Codex review: Past due flashing a spinner, then showing Forthcoming's rows again, passes

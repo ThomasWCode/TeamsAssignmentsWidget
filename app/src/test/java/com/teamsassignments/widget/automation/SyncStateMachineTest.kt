@@ -444,4 +444,63 @@ class SyncStateMachineTest {
             assertTrue(description.startsWith("1) Use results"))
         }
     }
+
+    /** A phone whose Past due list is the 8 Oct capture with Teams' "load more" placeholder below it. */
+    private fun loadMoreDevice() = FakeTeamsDevice(
+        lists = mapOf(
+            Tab.Forthcoming to "list_forthcoming",
+            Tab.PastDue to "list_past_due_load_more",
+            Tab.Completed to "list_completed",
+        ),
+    )
+
+    /** That list's cards, as saved by an earlier sync with fresh details, so only the lists are read. */
+    private fun loadMoreSaved(): List<Assignment> =
+        TeamsScreens.cards(Fixtures.load("list_past_due_load_more")).map { card ->
+            Assignment(
+                key = card.id,
+                title = card.title,
+                className = card.className,
+                dueAt = parser.parseList(card.headerDate, card.headerLabel, card.dueLine)?.toEpochMilli(),
+                tab = AssignmentTab.PastDue,
+                detailReadAt = clock.millis(),
+            )
+        }
+
+    @Test
+    fun `brings Past due's load-more placeholder into view, then reads the list`() = runTest {
+        // On the phone on 8 Oct every sync timed out on this list, waiting for the placeholder to
+        // finish loading; it only loads once on screen, and then gave way to the list's footer.
+        val device = loadMoreDevice().apply { scrollsTo[Tab.PastDue] = "list_past_due_load_more_end" }
+        val saved = loadMoreSaved()
+
+        val result = machine(device).run(saved)
+
+        assertEquals(saved.map { it.key }.toSet(), result.filter { it.tab == AssignmentTab.PastDue }.map { it.key }.toSet())
+        assertEquals(1, device.placeholdersShown)
+        assertTrue(log.any { "load more" in it }, log.toString())
+    }
+
+    @Test
+    fun `falls back to scrolling when the placeholder can't be shown`() = runTest {
+        val device = loadMoreDevice().apply {
+            scrollsTo[Tab.PastDue] = "list_past_due_load_more_end"
+            showingPlaceholderWorks = false
+        }
+        val saved = loadMoreSaved()
+
+        val result = machine(device).run(saved)
+
+        assertEquals(7, result.count { it.tab == AssignmentTab.PastDue })
+        assertTrue(UiAction.ScrollForward in device.scrolls)
+    }
+
+    @Test
+    fun `a list whose placeholder never loads isn't saved, so nothing on it is lost`() = runTest {
+        // Saving the seven cards Teams had loaded would drop any it hadn't: the previous list stays.
+        val device = loadMoreDevice()
+        val abort = assertFailsWith<SyncAbort> { machine(device).run(loadMoreSaved()) }
+        assertEquals("Couldn't read the Past due list", abort.reason)
+        assertTrue(device.placeholdersShown > 0)
+    }
 }
