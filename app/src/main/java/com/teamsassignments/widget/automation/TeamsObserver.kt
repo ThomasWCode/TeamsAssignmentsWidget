@@ -80,6 +80,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
     }
 
     private var candidate: Sighting? = null
+    private var candidateWhole = false
     private var candidateSince = 0L
     private var lastUsed: Sighting? = null
 
@@ -156,9 +157,11 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             else -> config.emptySettleMs
         }
         // Until the list has changed since its tab was selected, the rows may be the last tab's.
-        // A list becoming whole, its "load more" placeholder reached, is news even with the same cards.
+        // Whether it's whole is part of what must hold still: Teams may drop its "load more"
+        // placeholder a moment before the cards it fetched arrive. Once it has held, a list
+        // becoming whole is news even with the same cards.
         val whole = TeamsScreens.wholeListInTree(root)
-        if (!heldStill(seen, now, hold) || !changedSinceSwitch || (seen == lastUsed && whole == lastUsedWhole)) return null
+        if (!heldStill(seen, now, hold, whole) || !changedSinceSwitch || (seen == lastUsed && whole == lastUsedWhole)) return null
         lastUsed = seen
         lastUsedWhole = whole
         val openLists = if (tab == Tab.Completed) {
@@ -171,14 +174,18 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         return seen.copy(openLists = openLists)
     }
 
-    /** Whether [seen] has held still for [hold] milliseconds. Sets [settling] while it hasn't yet. */
-    private fun heldStill(seen: Sighting?, now: Long, hold: Long): Boolean {
+    /**
+     * Whether [seen], and for a list whether it was [whole], has held still for [hold]
+     * milliseconds. Sets [settling] while it hasn't yet.
+     */
+    private fun heldStill(seen: Sighting?, now: Long, hold: Long, whole: Boolean = false): Boolean {
         if (seen == null) {
             candidate = null
             return false
         }
-        if (seen != candidate) {
+        if (seen != candidate || whole != candidateWhole) {
             candidate = seen
+            candidateWhole = whole
             candidateSince = now
             settling = true
             return false

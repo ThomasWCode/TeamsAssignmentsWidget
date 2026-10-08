@@ -272,9 +272,14 @@ class TeamsObserverTest {
         assertTrue(pending.assignments.any { it.key.startsWith("8f3383b9") }, "a card only Past due lists is added")
         assertTrue(pending.presumed.isEmpty(), "the list may have more to load")
 
-        // Scrolled to the end: the same cards over the list's footer, and now the list is whole.
-        val end = assertNotNull(observer.lookAt(Fixtures.load("list_past_due_load_more_end"), 4_000))
-        assertEquals(listOf(gone.key), merge(end, pending.assignments).presumed)
+        // Scrolled to the end: the same cards over the list's footer. Whole now, it must still hold
+        // still before it counts (Codex review): Teams can drop the placeholder a moment before the
+        // next page arrives, and that page's work must not look missing meanwhile.
+        val end = Fixtures.load("list_past_due_load_more_end")
+        assertNull(observer.lookAt(end, 4_000))
+        assertTrue(observer.settling)
+        val whole = assertNotNull(observer.lookAt(end, 4_700))
+        assertEquals(listOf(gone.key), merge(whole, pending.assignments).presumed)
     }
 
     @Test

@@ -51,11 +51,12 @@ class FakeTeamsDevice(
 
     /**
      * Lists that change once scrolled, as Teams' do when a "load more" placeholder comes into
-     * view: the first forward scroll, or the placeholder asked onto the screen, makes that tab
-     * show this fixture from then on.
+     * view: the first forward scroll, or the placeholder asked onto the screen, starts that tab
+     * on these fixtures, each shown from so many milliseconds after (the first from 0), the last
+     * from then on. Timed steps need [now] to run on the test's clock.
      */
-    val scrollsTo = mutableMapOf<Tab, String>()
-    private val scrolledTo = mutableMapOf<Tab, String>()
+    val scrollsTo = mutableMapOf<Tab, List<Pair<Long, String>>>()
+    private val scrolledTo = mutableMapOf<Tab, Pair<Long, List<Pair<Long, String>>>>()
 
     /** Placeholders asked onto the screen with [UiAction.ShowOnScreen], and whether that works. */
     var placeholdersShown = 0
@@ -119,7 +120,7 @@ class FakeTeamsDevice(
 
     /** What a list tab shows right now, allowing for [slowTabs]. */
     private fun listFixture(tab: Tab): String {
-        scrolledTo[tab]?.let { return it }
+        scrolledTo[tab]?.let { (at, steps) -> return steps.last { (from, _) -> now() - at >= from }.second }
         val (loading, forMs) = slowTabs[tab] ?: return lists.getValue(tab)
         return if (now() - tabShownAt < forMs) loading else lists.getValue(tab)
     }
@@ -230,10 +231,10 @@ class FakeTeamsDevice(
         return handled
     }
 
-    /** Moves the list on screen to its [scrollsTo] fixture, if it has one left to move to. */
+    /** Starts the list on screen on its [scrollsTo] fixtures, if it has some left to move to. */
     private fun scrollList(): Boolean {
         val tab = (screen as? Screen.List)?.tab ?: return false
-        scrolledTo[tab] = scrollsTo.remove(tab) ?: return false
+        scrolledTo[tab] = now() to (scrollsTo.remove(tab) ?: return false)
         return true
     }
 
