@@ -349,6 +349,8 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                     out[unkeyed] = added.copy(
                         className = earlier.className.ifEmpty { added.className },
                         description = earlier.description,
+                        attachments = earlier.attachments,
+                        links = earlier.links,
                         dueText = earlier.dueText,
                         detailReadAt = earlier.detailReadAt,
                     )
@@ -437,6 +439,8 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                         title = title,
                         className = className,
                         description = detail.instructions,
+                        attachments = detail.attachments,
+                        links = detail.links,
                         dueText = detail.dueText.orEmpty(),
                         dueAt = dueAt,
                         tab = if (dueAt <= wallClock) AssignmentTab.PastDue else AssignmentTab.Forthcoming,
@@ -455,6 +459,8 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                     title = title,
                     className = className,
                     description = detail.instructions,
+                    attachments = detail.attachments,
+                    links = detail.links,
                     dueText = detail.dueText.orEmpty(),
                     dueAt = dueAt,
                     tab = if (dueAt <= wallClock) AssignmentTab.PastDue else AssignmentTab.Forthcoming,
@@ -472,6 +478,8 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 title = title,
                 className = className ?: match.className,
                 description = detail.instructions,
+                attachments = detail.attachments,
+                links = detail.links,
                 dueText = detail.dueText ?: match.dueText,
                 dueAt = dueAt ?: match.dueAt,
                 tab = when {

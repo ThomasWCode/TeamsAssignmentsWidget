@@ -446,6 +446,18 @@ class TeamsScreensTest {
         assertFalse("Show details" in text, text)
     }
 
+    @Test
+    fun `reads the reference materials' file names and the links in the instructions`() {
+        with(detail("detail_b0ccf04e")) {
+            assertEquals(listOf("Eduqas_Physics_Uncertainty_Summary.docx", "Prep 1.pdf"), attachments)
+            assertEquals(emptyList(), links)
+        }
+        with(detail("detail_4c958b24")) {
+            assertEquals(emptyList(), attachments)
+            assertEquals(listOf("https://d3kp6tphcrvm0s.cloudfront.net/ebl21-22_11-7"), links)
+        }
+    }
+
     // Handing in
 
     @Test

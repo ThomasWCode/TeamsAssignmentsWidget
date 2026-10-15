@@ -123,6 +123,12 @@ object TeamsSelectors {
 
     const val INSTRUCTIONS_HEADING = "Instructions"
 
+    /** How a reference material's card describes itself, before the file's name: `Reference materials Prep 1.pdf`. */
+    const val REFERENCE_MATERIAL = "Reference materials "
+
+    /** A link's description: the web address itself. */
+    val LINK = Regex("""https?://\S+""")
+
     /** Headings that end the instructions block. */
     val DETAIL_SECTION_HEADINGS = setOf(
         "Reference materials", "My work", "Points", "Rubric", "Feedback", "Grade", "Student work",
