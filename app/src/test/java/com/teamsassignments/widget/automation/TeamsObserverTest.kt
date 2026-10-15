@@ -385,6 +385,7 @@ class TeamsObserverTest {
         with(merged.assignments.single { it.key == physics }) {
             assertEquals("12.2-PH3", className)
             assertTrue(description.startsWith("1) Use results"), description)
+            assertEquals(listOf("https://d3kp6tphcrvm0s.cloudfront.net/ebl21-22_11-7"), links)
             assertEquals("Due tomorrow at 08:30", dueText)
             assertEquals(millis("2026-09-29T07:30:00Z"), dueAt)
             assertEquals(clock.millis() + 1, detailReadAt)
@@ -437,6 +438,8 @@ class TeamsObserverTest {
         assertTrue(fromList.assignments.all { TeamsSelectors.CARD_ID.matches(it.key) })
         with(fromList.assignments.single { it.key == physics }) {
             assertTrue(description.startsWith("1) Use results"), description)
+            // Its links too, as its own screen gave them.
+            assertEquals(listOf("https://d3kp6tphcrvm0s.cloudfront.net/ebl21-22_11-7"), links)
             assertEquals("Due tomorrow at 08:30", dueText)
             assertNotNull(detailReadAt)
         }

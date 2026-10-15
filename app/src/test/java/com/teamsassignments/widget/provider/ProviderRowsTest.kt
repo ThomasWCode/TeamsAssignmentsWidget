@@ -20,6 +20,8 @@ class ProviderRowsTest {
         title = "Particle Physics Test",
         className = "12.2-PH3",
         description = "Revise chapters 1 to 3.",
+        attachments = listOf("Exam questions.pdf", "Mark scheme.pdf"),
+        links = listOf("https://example.com/notes"),
         dueText = "Due tomorrow at 08:30",
         dueAt = Instant.parse("2026-09-29T07:30:00Z").toEpochMilli(),
         tab = AssignmentTab.Forthcoming,
@@ -58,6 +60,8 @@ class ProviderRowsTest {
         assertEquals("Forthcoming", table.cell(0, Assignments.TAB))
         assertEquals(1_759_000_000_000, table.cell(0, Assignments.DETAIL_READ_AT))
         assertEquals(1_759_000_100_000, table.cell(0, Assignments.LAST_SYNCED_AT))
+        assertEquals("Exam questions.pdf\nMark scheme.pdf", table.cell(0, Assignments.ATTACHMENTS))
+        assertEquals("https://example.com/notes", table.cell(0, Assignments.LINKS))
     }
 
     @Test
@@ -68,6 +72,8 @@ class ProviderRowsTest {
         assertEquals("", table.cell(1, Assignments.DESCRIPTION))
         assertNull(table.cell(1, Assignments.DUE_AT))
         assertNull(table.cell(1, Assignments.DETAIL_READ_AT))
+        assertEquals("", table.cell(1, Assignments.ATTACHMENTS))
+        assertEquals("", table.cell(1, Assignments.LINKS))
         assertEquals("PastDue", table.cell(1, Assignments.TAB))
     }
 

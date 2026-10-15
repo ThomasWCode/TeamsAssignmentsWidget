@@ -55,7 +55,7 @@ Apps signed with this app's key, such as [Decrastination](https://github.com/Tho
 
 | URI or call | What it gives |
 |---|---|
-| `content://com.teamsassignments.widget.assignments/assignments` | One row per assignment not handed in, in the widget's order: `key`, `title`, `class_name`, `description`, `due_text`, `due_at`, `tab`, `detail_read_at`, `last_synced_at` |
+| `content://com.teamsassignments.widget.assignments/assignments` | One row per assignment not handed in, in the widget's order: `key`, `title`, `class_name`, `description`, `due_text`, `due_at`, `tab`, `detail_read_at`, `last_synced_at`, `attachments` (the reference materials' file names, one a line) and `links` (the web addresses its instructions link to, one a line) |
 | `content://com.teamsassignments.widget.assignments/state` | One row: `last_success_at`, `status`, `status_message`, `status_at`, `assignment_count`, `sync_service_enabled` |
 | `call(root, "requestSync", null, null)` | Starts a sync, as ↻ does. The result has `started`, and `reason` when it didn't: `service_off` or `busy` |
 | `call(root, "open", key, null)` | Opens that assignment in Teams, as a row tap does. One more `reason`: `unknown_key` |

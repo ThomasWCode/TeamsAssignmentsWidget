@@ -20,7 +20,10 @@ internal object ProviderRows {
         Table(
             Assignments.COLUMNS,
             state.assignments.sortedWith(widgetOrder).map {
-                arrayOf(it.key, it.title, it.className, it.description, it.dueText, it.dueAt, it.tab.name, it.detailReadAt, it.lastSyncedAt)
+                arrayOf(
+                    it.key, it.title, it.className, it.description, it.dueText, it.dueAt, it.tab.name, it.detailReadAt, it.lastSyncedAt,
+                    it.attachments.joinToString("\n"), it.links.joinToString("\n"),
+                )
             },
         ).project(projection)
 
