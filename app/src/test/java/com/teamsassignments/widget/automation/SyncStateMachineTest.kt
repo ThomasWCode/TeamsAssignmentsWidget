@@ -72,7 +72,9 @@ class SyncStateMachineTest {
         with(byId.getValue("b0ccf04e")) {
             assertEquals("Physics Skills & Stretch 12.2-PH3", className)
             assertEquals(millis("2026-09-29T22:59:00Z"), dueAt)
+            assertEquals(listOf("Eduqas_Physics_Uncertainty_Summary.docx", "Prep 1.pdf"), attachments)
         }
+        assertEquals(listOf("https://d3kp6tphcrvm0s.cloudfront.net/ebl21-22_11-7"), byId.getValue("4c958b24").links)
         with(byId.getValue("66fcdab0")) {
             assertEquals("Ms Cloud year 12 2026/27", className)
             assertEquals(millis("2026-10-01T07:30:00Z"), dueAt)
@@ -223,13 +225,14 @@ class SyncStateMachineTest {
 
     @Test
     fun `keeps an earlier description when a card won't open this time`() = runTest {
-        val earlier = Assignment(key = worksheet, title = "old", className = "old", description = "Earlier instructions")
+        val earlier = Assignment(key = worksheet, title = "old", className = "old", description = "Earlier instructions", attachments = listOf("Sheet.pdf"))
         val device = FakeTeamsDevice().apply {
             tapsOpenCards = false
             swallowClicks[worksheet] = Int.MAX_VALUE
         }
         val result = machine(device).run(previous = listOf(earlier))
         assertEquals("Earlier instructions", result.single { it.key == worksheet }.description)
+        assertEquals(listOf("Sheet.pdf"), result.single { it.key == worksheet }.attachments)
     }
 
     @Test

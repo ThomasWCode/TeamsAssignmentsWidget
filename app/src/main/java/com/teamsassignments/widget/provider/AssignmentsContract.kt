@@ -48,7 +48,13 @@ object AssignmentsContract {
         /** When this app last saw it in Teams, during a sync or while Teams was open, in epoch milliseconds. */
         const val LAST_SYNCED_AT = "last_synced_at"
 
-        val COLUMNS = arrayOf(KEY, TITLE, CLASS_NAME, DESCRIPTION, DUE_TEXT, DUE_AT, TAB, DETAIL_READ_AT, LAST_SYNCED_AT)
+        /** The files attached to it as reference materials, by name, one a line. Empty when there are none, or until its own screen has been read. */
+        const val ATTACHMENTS = "attachments"
+
+        /** The web addresses its instructions link to, one a line. Empty when there are none, or until its own screen has been read. */
+        const val LINKS = "links"
+
+        val COLUMNS = arrayOf(KEY, TITLE, CLASS_NAME, DESCRIPTION, DUE_TEXT, DUE_AT, TAB, DETAIL_READ_AT, LAST_SYNCED_AT, ATTACHMENTS, LINKS)
     }
 
     object State {
