@@ -16,6 +16,10 @@ data class Assignment(
     val className: String,
     /** Plain-text instructions, at most [MAX_DESCRIPTION] characters. Empty until the detail screen is read. */
     val description: String = "",
+    /** The files attached to it as reference materials, by name, from its detail screen. */
+    val attachments: List<String> = emptyList(),
+    /** The web addresses its instructions link to, from its detail screen. */
+    val links: List<String> = emptyList(),
     /** The due text as Teams showed it, kept for display when [dueAt] couldn't be parsed. */
     val dueText: String = "",
     /** Due time in epoch milliseconds, or null if unknown. */

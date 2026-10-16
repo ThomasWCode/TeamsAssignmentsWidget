@@ -35,6 +35,10 @@ data class DetailScreen(
     /** e.g. `Due tomorrow at 08:30`. */
     val dueText: String?,
     val instructions: String,
+    /** The files attached as reference materials, by name (`Prep 1.pdf`), in the screen's order. */
+    val attachments: List<String> = emptyList(),
+    /** The web addresses the screen links to (in the instructions), in its order, each once. */
+    val links: List<String> = emptyList(),
 ) {
     val isHandedIn: Boolean
         get() = status != null && TeamsSelectors.DETAIL_HANDED_IN_STATUS.containsMatchIn(status)
@@ -230,8 +234,29 @@ object TeamsScreens {
             title = titleIndex?.let(texts::get)?.takeIf { it.isNotEmpty() },
             dueText = texts.getOrNull(dueIndex),
             instructions = instructions(tokens, from = headerEnd + 1),
+            attachments = attachments(container),
+            links = links(container),
         )
     }
+
+    /**
+     * The reference materials' file names, from their cards' descriptions (`Reference materials
+     * Prep 1.pdf`): the teacher's files, not the student's own under My work.
+     */
+    private fun attachments(container: UiNode): List<String> = container.walk()
+        .map { it.contentDescription.squash() }
+        .filter { it.startsWith(TeamsSelectors.REFERENCE_MATERIAL) }
+        .map { it.removePrefix(TeamsSelectors.REFERENCE_MATERIAL).trim() }
+        .filter { it.isNotEmpty() }
+        .toList()
+
+    /** The links on the screen: each a tappable node whose description is the web address it opens. */
+    private fun links(container: UiNode): List<String> = container.walk()
+        .filter { it.isClickable }
+        .map { it.contentDescription.trim() }
+        .filter { TeamsSelectors.LINK.matches(it) }
+        .distinct()
+        .toList()
 
     /**
      * Whether the toolbar title is the class name, as on a detail screen. Opened from the

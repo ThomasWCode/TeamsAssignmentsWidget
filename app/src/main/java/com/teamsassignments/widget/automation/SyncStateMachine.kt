@@ -163,6 +163,8 @@ class SyncStateMachine(
             // The toolbar is authoritative; a collapsed card's class may include a tag.
             className = detail?.className ?: old?.className?.takeIf { card.collapsed } ?: card.className,
             description = detail?.instructions ?: old?.description.orEmpty(),
+            attachments = detail?.attachments ?: old?.attachments.orEmpty(),
+            links = detail?.links ?: old?.links.orEmpty(),
             dueText = detail?.dueText ?: listOfNotNull(card.headerDate, card.dueLine).joinToString(" · "),
             dueAt = detailDueAt ?: listDueAt,
             tab = tab.toAssignmentTab(),
