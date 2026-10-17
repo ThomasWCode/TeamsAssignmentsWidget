@@ -408,14 +408,16 @@ class TeamsAutomationService : AccessibilityService() {
         if (sighting == null) return
         var changes = emptyList<String>()
         var listsSeen = false
+        var seenOpen = emptyList<String>()
+        val wallClock = System.currentTimeMillis()
         store.applyObserved { saved, handedInLately ->
-            val merged = TeamsObserver.merge(
-                sighting, saved, DueDateParser(Clock.systemDefaultZone()), System.currentTimeMillis(), handedInLately,
-            )
+            val merged = TeamsObserver.merge(sighting, saved, DueDateParser(Clock.systemDefaultZone()), wallClock, handedInLately)
             changes = merged.changes
             listsSeen = merged.listsSeenAt != null
+            seenOpen = merged.seenOpen
             AssignmentStore.Observed(merged.assignments, merged.handedIn, merged.listsSeenAt)
         }
+        observer.sawOpen(seenOpen, wallClock)
         // Seeing both lists in full moves the widget's "Updated" time, even with nothing changed.
         if (changes.isEmpty() && !listsSeen) return
         changes.forEach { log.add("Seen in Teams: $it") }

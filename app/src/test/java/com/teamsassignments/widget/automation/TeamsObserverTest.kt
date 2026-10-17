@@ -147,9 +147,13 @@ class TeamsObserverTest {
         val synced = SyncStateMachine(FakeTeamsDevice(), parser, { clock.millis() }, now = { testScheduler.currentTime })
             .run(emptyList())
         val observer = TeamsObserver()
-        assertEquals(emptyList(), merge(observer.see("list_forthcoming"), synced).changes)
-        assertEquals(emptyList(), merge(observer.see("list_past_due", at = 2_000), synced).changes)
-        assertEquals(emptyList(), merge(observer.see("detail_4c958b24", at = 4_000), synced).changes)
+        // Not even a timestamp: an unchanged list saves nothing, so the provider's apps
+        // (Decrastination, which syncs and replans when told) aren't told of every look at Teams.
+        listOf("list_forthcoming" to 0L, "list_past_due" to 2_000L, "detail_4c958b24" to 4_000L).forEach { (fixture, at) ->
+            val merged = merge(observer.see(fixture, at = at), synced)
+            assertEquals(emptyList(), merged.changes, fixture)
+            assertEquals(synced, merged.assignments, fixture)
+        }
     }
 
     @Test
@@ -785,18 +789,34 @@ class TeamsObserverTest {
     fun `work seen open, unchanged, since the earlier view isn't taken as handed in for missing from it`() {
         // Codex review: only a change moved lastSyncedAt on, so work seen open but unchanged since
         // the earlier view (on its own screen, say, or a list that can't count) still looked missing.
-        val read = merge(
-            TeamsObserver().see("detail_4c958b24"),
-            listOf(Assignment(key = physics, title = "Particle Physics Test", className = "12.2-PH3", dueAt = millis("2026-09-29T07:30:00Z"))),
-        ).assignments.map { it.copy(lastSyncedAt = 0) }
+        // Here the two open tabs, seen in full, are Teams' lists before they've caught up with it.
+        val read = merge(TeamsObserver().see("detail_3a5b3795_hand_in_again"), listOf(facts)).assignments.map { it.copy(lastSyncedAt = 0) }
+        assertEquals(listOf(facts.key), read.map { it.key })
         val observer = TeamsObserver()
-        observer.see("list_past_due") // in full, without it
-        val seenOpen = merge(observer.see("detail_4c958b24", at = 2_000), read, wallClock = clock.millis() + 2_700)
-        assertTrue(seenOpen.changes.isEmpty(), "nothing on its screen has changed")
-        assertEquals(clock.millis() + 2_700, seenOpen.assignments.single().lastSyncedAt)
-        // Forthcoming in full, without it either (as Teams' list might be before it catches up).
-        val both = merge(observer.see("list_forthcoming_single", at = 4_000), seenOpen.assignments)
-        assertTrue(physics !in both.presumed, both.presumed.toString())
+        observer.see("list_forthcoming") // in full, without it
+        val seenOpen = merge(observer.see("detail_3a5b3795_hand_in_again", at = 2_000), read, wallClock = clock.millis() + 2_700)
+        // Nothing on its screen has changed, so nothing is saved (and the provider's apps aren't
+        // told of it): the sighting is noted by the observer, as the service does.
+        assertTrue(seenOpen.changes.isEmpty())
+        assertEquals(read, seenOpen.assignments)
+        assertEquals(read.map { it.key }, seenOpen.seenOpen)
+        observer.sawOpen(seenOpen.seenOpen, clock.millis() + 2_700)
+        assertTrue(merge(observer.see("list_past_due", at = 4_000), read).presumed.isEmpty())
+        // Not seen open since, it would have gone.
+        val unseen = TeamsObserver()
+        unseen.see("list_forthcoming")
+        assertEquals(read.map { it.key }, merge(unseen.see("list_past_due", at = 4_000), read).presumed)
+
+        // Seen on a list that can't count for every class's does the same, noted by the look
+        // itself: here a class team's own tab (captured 17 Oct), between the app's two tabs.
+        val laptops = Assignment(
+            key = "2fe18689-f75e-4244-a4a0-9f44df63cef4", title = "Laptops and ESSAY PLAN for TUESDAY", className = german,
+            dueAt = millis("2026-10-19T08:00:00Z"), listDueAt = millis("2026-10-19T08:00:00Z"),
+        )
+        val listed = TeamsObserver()
+        listed.see("list_forthcoming")
+        listed.see("list_class_forthcoming", at = 2_000)
+        assertTrue(merge(listed.see("list_past_due", at = 4_000), listOf(laptops)).presumed.isEmpty())
     }
 
     @Test
