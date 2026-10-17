@@ -381,9 +381,9 @@ class TeamsAutomationService : AccessibilityService() {
             }
         }
         if (isBusy) return
-        // A page that doesn't name Assignments counts if it's an assignment's own screen, or a
-        // class team's Assignments tab (titled with the class), whose list TeamsObserver keeps to
-        // that class.
+        // A page that doesn't name Assignments counts if it's an assignment's own screen, or any
+        // Assignments list, a class team's tab say: TeamsObserver works out whose list it is (the
+        // app's own, one class's, or not known yet, which it leaves till it is).
         val onAssignments = view == TeamsView.Assignments || (root != null && (TeamsScreens.isDetail(root) || TeamsScreens.isList(root)))
         if (root == null || !onAssignments) {
             // Assignments whose tree couldn't be copied (changing underneath, say) is tried again
@@ -407,20 +407,25 @@ class TeamsAutomationService : AccessibilityService() {
         pacer.looked(LookPacer.Outcome.Read, now, settling = observer.settling)
         if (sighting == null) return
         var changes = emptyList<String>()
+        var notes = emptyList<String>()
         var listsSeen = false
         var seenOpen = emptyList<String>()
         val wallClock = System.currentTimeMillis()
         store.applyObserved { saved, handedInLately ->
             val merged = TeamsObserver.merge(sighting, saved, DueDateParser(Clock.systemDefaultZone()), wallClock, handedInLately)
             changes = merged.changes
+            notes = merged.notes
             listsSeen = merged.listsSeenAt != null
             seenOpen = merged.seenOpen
             AssignmentStore.Observed(merged.assignments, merged.handedIn, merged.listsSeenAt)
         }
         observer.sawOpen(seenOpen, wallClock)
+        (changes + notes).forEach { log.add("Seen in Teams: $it") }
         // Seeing both lists in full moves the widget's "Updated" time, even with nothing changed.
-        if (changes.isEmpty() && !listsSeen) return
-        changes.forEach { log.add("Seen in Teams: $it") }
+        if (changes.isEmpty() && !listsSeen) {
+            if (notes.isNotEmpty()) log.persist()
+            return
+        }
         log.persist()
         WidgetUpdater.update(this)
     }

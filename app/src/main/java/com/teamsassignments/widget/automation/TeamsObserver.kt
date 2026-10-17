@@ -93,6 +93,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
      * the list, its hand-in undone, needs no reporting: the store forgets a hand-in once its work
      * is listed again. [listsSeenAt] is set when both open lists, every class's, were seen in full.
      * [seenOpen] holds the saved work a detail screen showed open, changed or not, for [sawOpen].
+     * [notes] are lines for the log about what was seen but left alone, and why: no change.
      */
     data class Merged(
         val assignments: List<Assignment>,
@@ -101,6 +102,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         val presumed: List<String> = emptyList(),
         val listsSeenAt: Long? = null,
         val seenOpen: List<String> = emptyList(),
+        val notes: List<String> = emptyList(),
     )
 
     /** One open tab seen in full: every card on it, whether any showed as handed in, and when. */
@@ -400,6 +402,9 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                     // Remembered, so a list Teams hasn't refreshed can't add it back. Only work that
                     // was on the list, though: Completed holds weeks of work, some of which can come
                     // back (returned for revision, reopened), and the rest needs keeping off nothing.
+                    // Work already taken off for being on neither open list isn't remembered either:
+                    // that came from lists that no longer showed it, and Teams doesn't go back to
+                    // older lists than those, so none should add it back (Claude review).
                     if (index >= 0) {
                         if (card.id !in recentlyHandedIn) handedIn += card.id
                         changes += if (card.isHandedIn) "\"${out[index].title}\" handed in" else "\"${out[index].title}\" is on Completed"
@@ -600,7 +605,9 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 // Taking work off the list needs more than reading it does: with no due time to
                 // tell them apart, last week's work handed in would take this week's, of the same
                 // title and class, off the list for 12 hours. Completed's cards have GUIDs.
-                if (dueAt == null || match.dueAt != dueAt) return unchanged
+                if (dueAt == null || match.dueAt != dueAt) {
+                    return unchanged.copy(notes = listOf("\"$title\" shows as handed in, with no due time to tell it by: left to Completed or a sync"))
+                }
                 return Merged(saved.filterIndexed { i, _ -> i != index }, listOf("\"${match.title}\" handed in"), listOf(match.key))
             }
             val updated = match.copy(

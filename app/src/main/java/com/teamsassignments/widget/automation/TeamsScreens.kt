@@ -79,10 +79,13 @@ object TeamsScreens {
     /** The native toolbar's title, or "" while it isn't drawn. */
     fun toolbarTitle(root: UiNode): String = root.findById(TeamsSelectors.TOOLBAR_TITLE)?.text?.squash().orEmpty()
 
-    /** Whether the list is filtered by class (the chip to clear it shows) or searched by title (the box holds text). */
+    /**
+     * Whether the list is filtered by class (the chip to clear it shows) or searched by title (the
+     * box holds text other than its placeholder).
+     */
     fun listFiltered(root: UiNode): Boolean = root.walk().any {
         TeamsSelectors.CLEAR_CLASS_FILTER.matches(it.contentDescription.squash()) ||
-            (it.className.endsWith("EditText") && it.text.isNotBlank())
+            (it.className.endsWith("EditText") && it.text.isNotBlank() && !it.text.squash().equals(TeamsSelectors.SEARCH_PLACEHOLDER, ignoreCase = true))
     }
 
     /** Whether [tab], selected, shows that it has nothing on it (see [TeamsSelectors.emptyList]). */
