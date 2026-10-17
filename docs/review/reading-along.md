@@ -2,6 +2,34 @@
 
 This covers how the widget's list changes while no workflow runs and the user has Teams open: `TeamsAutomationService.watchTeams`/`lookAtTeams`, `LookPacer`, `AndroidTeamsDevice.teamsView`/`teamsSnapshot`, `TeamsObserver` (`look` and `merge`) and `AssignmentStore.applyObserved`. Findings marked **confirmed** were reproduced with a throwaway unit test that fed `TeamsObserver.merge` the sightings described (the test was then deleted). Those marked **by reading** follow from the code alone. Those marked **unverified** depend on Teams screens there are no captures of yet.
 
+## Outcome (0.5.0)
+
+The findings and improvements below are as first written. Everything was then fixed or built in 0.5.0, except improvement A, which was left out by choice. The two unverified findings were checked on the phone the same day: see [Class teams, filters and empty tabs](../teams-ui-notes.md#class-teams-filters-and-empty-tabs-17-oct) for the captures. Each fix has a test in `TeamsObserverTest`, `TeamsScreensTest`, `SyncStateMachineTest`, `NavigateStateMachineTest`, `LookPacerTest`, `DueDateParserTest`, `AssignmentStoreTest`, `WidgetTextTest` or `ProviderRowsTest`.
+
+| | Finding | On the phone | 0.5.0 |
+|---|---|---|---|
+| 1 | A one-class list taking every other class's work as handed in | A class team's own tab was skipped, its toolbar titled with the class. But **Filter → Classes** narrows the app's own list with the toolbar still reading `Assignments`, so the finding stood, and a sync would have saved one class's work too | Lists carry their scope (`TeamsScreens.ListScope`). A class team's tab is read for that class alone, a narrowed list never counts as whole, and the workflows stop on a narrowed list and wait out a class team's |
+| 2 | A handed-in screen with no due line removing another week's work | | Removal needs a due time known on both sides and agreeing |
+| 3 | Completed remembered whole, hiding returned work | Completed went back weeks (to 9 Oct) | Only work that was on the list is remembered |
+| 4 | The list's due time overriding the detail screen's | | `Assignment.listDueAt`: a changed row is told list against list, in reading along and the sync. List dates take the tab as a hint for the year |
+| 5 | A cut-short collapsed title leaving a duplicate | | The row keeps its title when the card gives it its id; the detail screen matches a cut-short title with class and due time agreeing, and won't add beside one |
+| 6 | The watch loop copying Teams every 0.7 s while copies failed | | `LookPacer` owns "settling": only a look that read the screen says so, so the 5-failure cap holds |
+| 7 | An empty open tab never counting as seen in full | Confirmed: an empty tab has no list, only `No … assignments right now.` | Whole when the selected tab's words show, with no list and nothing loading. `list_past_due_empty` re-derived in that shape |
+| 8 | A stale list taking an undone hand-in away again | | Work seen open after the earlier view (`lastSyncedAt`) is left alone |
+| 9 | Suffix class matching; a refused sighting spent; the 10-minute window; "added" for a key swap | `12.2-PH3` and `Physics Skills & Stretch 12.2-PH3` are both real teams | Exact class matching (a collapsed card with a tag leaves its class unknown); no look while a sync's status stands; an unchanged look refreshes a view's time; "took its Teams id" |
+
+| | Improvement | 0.5.0 |
+|---|---|---|
+| A | Guard against mass removal | Not done, by choice |
+| B | Stricter for removing than for adding | Findings 2, 3, 5 and 9 |
+| C | The list's due time apart from the best one | Finding 4 |
+| D | The watch loop's exit | Finding 6, with two `LookPacerTest` tests |
+| E | Capture the missing screens | Six captures: two class team tabs, two empty ones, a filtered list and a class team's detail screen |
+| F | The probes as regression tests | Each probe is now a test |
+| G | Show what reading along confirmed | `WidgetState.listsSeenAt`: the widget's *Updated* time is the later of it and the last sync, and the provider's state row has `lists_seen_at` |
+
+Three further improvements came from the phone, all built in 0.5.0 (see [Found on the phone](#found-on-the-phone)): Forthcoming in full counting on its own for later work, the Past due tab's mark, and reading a class team's own tab.
+
 ## How it works
 
 ### When it looks
@@ -137,3 +165,14 @@ The undo path restores the row under its GUID. If the user goes Back before Team
 **F. Turn the probes into regression tests.** Findings 2 to 5 each reduce to a short `merge` call in `TeamsObserverTest`, with constructed `Sighting`s, no fixture needed. Each test should be written failing first and then fixed.
 
 **G. Show what reading along has confirmed.** Reading along refreshes rows (`lastSyncedAt`) but not `lastSuccessAt`. Recording when both open tabs were last seen in full (say `WidgetState.openListsSeenAt`) would let the widget and the content provider say "checked in Teams 3 min ago", so the user doesn't run a sync that would find nothing new.
+
+## Found on the phone
+
+Looking through Teams on the phone (17 Oct, 0.4.0 installed) turned up these ways to see more, beyond the findings:
+
+- **Work handed in elsewhere went unseen.** "Laptops", due on the 19th, was handed in at 11:40, almost certainly on another device, and stayed on the widget until the 14:29 sync. Only both open tabs seen in full within ten minutes took such work off, and Teams opens on Forthcoming. **Built:** Forthcoming seen in full is enough on its own for work due more than 2 minutes after the look. Nothing moves such work to Past due, so only a hand-in, or the teacher, took it off.
+- **The Past due tab says whether it holds work.** On Forthcoming and Completed its description is `You have past due assignments` while it does, and it is a plain `Past due` when it doesn't. **Built:** unmarked, Past due counts as seen in full and empty, so late work handed in elsewhere goes too, without opening Past due. With late work saved, the unmarked tab must hold for 6 s first, as a suspect empty list must. A filtered list's mark is ignored, since the filter hides the other classes' late work.
+- **A class team's own Assignments tab** is another way in, and Teams' own Past due footer sends students there for older work. **Built:** it's read, scoped to that class (above).
+- **Teams' Activity feed** lists every `<teacher> added an assignment`, with class, full title and due date, but no time. Left for now: tapping the alert already opens the assignment, which reading along reads and adds with its exact time, and alerts stay for days, so rows made from them could bring back work since handed in or deleted.
+- **Teams' notifications** could show new work without the user opening Teams at all. There were none on the phone to learn their format from, and the service would need notification events (a config change). Left until a real one can be captured.
+- An unrelated line in the phone's log: an app queried `content://com.teamsassignments.widget.assignments/returned`, which the provider doesn't offer (`No such table`). Probably Decrastination expecting a table this app doesn't have yet.
