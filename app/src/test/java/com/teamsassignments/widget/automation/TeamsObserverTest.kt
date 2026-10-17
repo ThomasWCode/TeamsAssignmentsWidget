@@ -934,6 +934,19 @@ class TeamsObserverTest {
     }
 
     @Test
+    fun `a list whose toolbar isn't drawn yet is read once it is`() {
+        // Codex review: a class team's list settling before its title was drawn passed for every
+        // class's, and its Past due's older work would have been added, with no class.
+        val observer = TeamsObserver()
+        val untitled = Fixtures.load("list_class_forthcoming_untitled")
+        assertNull(observer.lookAt(untitled, 0))
+        assertNull(observer.lookAt(untitled, 5_000))
+        assertFalse(observer.settling)
+        val titled = assertIs<Sighting.OnList>(observer.see("list_class_forthcoming", at = 6_000))
+        assertEquals(TeamsScreens.ListScope(className = german, narrowed = false), titled.scope)
+    }
+
+    @Test
     fun `reads a class team's own tab, the class from its toolbar`() {
         // Captured on 17 Oct: the toolbar is titled with the class, and the cards leave it out.
         val sighting = assertIs<Sighting.OnList>(TeamsObserver().see17("list_class_forthcoming"))

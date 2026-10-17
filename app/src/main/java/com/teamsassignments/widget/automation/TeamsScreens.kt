@@ -63,7 +63,7 @@ object TeamsScreens {
     data class ListScope(val className: String?, val narrowed: Boolean)
 
     fun listScope(root: UiNode): ListScope {
-        val title = root.findById(TeamsSelectors.TOOLBAR_TITLE)?.text?.squash().orEmpty()
+        val title = toolbarTitle(root)
         return ListScope(
             className = title.takeIf { it.isNotEmpty() && it != TeamsSelectors.ASSIGNMENTS_TITLE },
             narrowed = listFiltered(root) || title.isEmpty(),
@@ -74,8 +74,10 @@ object TeamsScreens {
      * Whether this is the Assignments app's own list, its toolbar plainly titled `Assignments`:
      * not a class team's, nor one whose toolbar hasn't been drawn yet, which could be either.
      */
-    fun isAppList(root: UiNode): Boolean =
-        isList(root) && root.findById(TeamsSelectors.TOOLBAR_TITLE)?.text?.squash() == TeamsSelectors.ASSIGNMENTS_TITLE
+    fun isAppList(root: UiNode): Boolean = isList(root) && toolbarTitle(root) == TeamsSelectors.ASSIGNMENTS_TITLE
+
+    /** The native toolbar's title, or "" while it isn't drawn. */
+    fun toolbarTitle(root: UiNode): String = root.findById(TeamsSelectors.TOOLBAR_TITLE)?.text?.squash().orEmpty()
 
     /** Whether the list is filtered by class (the chip to clear it shows) or searched by title (the box holds text). */
     fun listFiltered(root: UiNode): Boolean = root.walk().any {
