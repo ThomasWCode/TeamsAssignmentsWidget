@@ -595,6 +595,19 @@ class TeamsScreensTest {
             ),
         )
         assertTrue(TeamsScreens.listScope(searched).narrowed)
+        // Claude review: a Teams that reported the box's placeholder as its text mustn't read as a search.
+        val placeholder = node(
+            "",
+            children = listOf(
+                node("Assignments", id = TeamsSelectors.TOOLBAR_TITLE),
+                FakeNode(
+                    className = "android.widget.EditText", text = "Search by assignment title", contentDescription = "", viewId = "",
+                    bounds = IntRect(0, 0, 100, 100), isClickable = true, isScrollable = false, isSelected = false,
+                    children = emptyList(), onAction = { _, _ -> false },
+                ),
+            ),
+        )
+        assertFalse(TeamsScreens.listFiltered(placeholder))
 
         // The app's own list says so in its toolbar; a class team's, or one not drawn yet, doesn't.
         listOf("list_forthcoming", "list_forthcoming_earlier_today", "list_forthcoming_filtered", "list_past_due_empty")

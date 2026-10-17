@@ -712,6 +712,9 @@ class TeamsObserverTest {
         val merged = merge(Sighting.OnDetail(detail, classInToolbar = true), listOf(thisWeek))
         assertEquals(listOf(thisWeek), merged.assignments)
         assertTrue(merged.handedIn.isEmpty())
+        // Claude review: left alone, but said so in the log, so it can be told from a screen unread.
+        assertTrue(merged.changes.isEmpty())
+        assertEquals(listOf("\"Particle Physics Test\" shows as handed in, with no due time to tell it by: left to Completed or a sync"), merged.notes)
     }
 
     @Test
