@@ -82,8 +82,15 @@ class AssignmentStore(
     /** The keys handed in over the last [HANDED_IN_MEMORY_MS] (see [WidgetState.handedIn]). */
     fun recentlyHandedIn(): Set<String> = recent(state.value.handedIn, clock.millis()).keys
 
-    /** What reading along made of the list, and the keys it saw handed in, to remember. */
-    data class Observed(val assignments: List<Assignment>, val handedIn: Collection<String> = emptyList())
+    /**
+     * What reading along made of the list, the keys it saw handed in, to remember, and when it saw
+     * both open lists in full, if it just did (see [WidgetState.listsSeenAt]).
+     */
+    data class Observed(
+        val assignments: List<Assignment>,
+        val handedIn: Collection<String> = emptyList(),
+        val listsSeenAt: Long? = null,
+    )
 
     /**
      * Applies what was seen in Teams outside a sync (see TeamsObserver). [transform] gets the list
@@ -99,11 +106,12 @@ class AssignmentStore(
         val lately = recent(state.handedIn, now)
         val observed = transform(state.assignments, lately.keys.associateWith { key -> state.handedInWork.firstOrNull { it.key == key } })
         val newlyHandedIn = observed.handedIn.filterNot { it in lately }
-        if (observed.assignments == state.assignments && newlyHandedIn.isEmpty()) {
+        if (observed.assignments == state.assignments && newlyHandedIn.isEmpty() && observed.listsSeenAt == null) {
             state
         } else {
             state.copy(
                 assignments = observed.assignments,
+                listsSeenAt = observed.listsSeenAt ?: state.listsSeenAt,
                 classColors = ClassColors.assign(state.classColors, observed.assignments.map { it.className }),
             ).remembering(
                 handedIn = lately + newlyHandedIn.associateWith { now },

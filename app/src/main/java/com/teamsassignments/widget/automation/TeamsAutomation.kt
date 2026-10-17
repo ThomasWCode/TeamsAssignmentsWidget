@@ -10,6 +10,9 @@ class SyncAbort(val reason: String) : Exception(reason) {
     companion object {
         const val CANCELLED = "Cancelled"
         const val LEFT_TEAMS = "Teams was closed"
+
+        /** Teams' list shows some classes' work, or some titles', not all (see [TeamsScreens.ListScope]). */
+        const val NARROWED = "Teams' Assignments list is filtered; clear its filter in Teams"
     }
 }
 
@@ -114,7 +117,11 @@ abstract class TeamsAutomation(
         }
     }
 
-    /** Opens Teams on the Assignments list, backing out of a detail screen if Teams resumes on one. */
+    /**
+     * Opens Teams on the Assignments list, backing out of a detail screen if Teams resumes on one.
+     * The app's own list, that is: a class team's Assignments tab, where Teams may resume before
+     * the link lands, holds that class's work alone.
+     */
     protected suspend fun openAssignments() {
         log("Opening Teams Assignments")
         if (!device.launchAssignments()) throw SyncAbort("Teams isn't installed")
@@ -123,7 +130,7 @@ abstract class TeamsAutomation(
         try {
             awaitScreen("the Assignments list", config.launchTimeoutMs) { root ->
                 when {
-                    TeamsScreens.isList(root) -> true
+                    TeamsScreens.isList(root) -> true.takeIf { TeamsScreens.listScope(root).className == null }
                     TeamsScreens.isDetail(root) && now() - lastBack > config.backRetryMs -> {
                         log("Teams resumed on a detail screen; going back")
                         device.back()
@@ -185,7 +192,9 @@ abstract class TeamsAutomation(
      *   off screen below the last card, isn't one: it only loads once scrolled to, so waiting for
      *   it would wait forever. Whether the list is complete is for the caller ([TeamsScreens.loadMorePending]);
      * - an empty list must hold for [emptySettleMs] before it is believed.
-     * If it never settles, the step times out and the caller keeps the data it had.
+     * If it never settles, the step times out and the caller keeps the data it had. A list
+     * filtered by class or searched by title ends the run ([SyncAbort.NARROWED]): it would pass
+     * for the whole tab, and leave out everything the filter hides.
      */
     protected suspend fun awaitSettledList(
         tab: Tab,
@@ -198,7 +207,8 @@ abstract class TeamsAutomation(
         var lastPending: Boolean? = null
         var stableSince = 0L
         return awaitScreen("the ${tab.label} list", config.stepTimeoutMs + emptySettleMs) { root ->
-            if (TeamsScreens.selectedTab(root) != tab) {
+            // A class team's own tab of that name holds one class's work: not this list.
+            if (TeamsScreens.selectedTab(root) != tab || TeamsScreens.listScope(root).className != null) {
                 lastIds = null
                 return@awaitScreen null
             }
@@ -218,7 +228,12 @@ abstract class TeamsAutomation(
             }
             if (!changed) return@awaitScreen null // still the previous tab's rows
             val needed = if (ids.isEmpty()) emptySettleMs else config.settleMs
-            cards.takeIf { t - stableSince >= needed }
+            if (t - stableSince < needed) return@awaitScreen null
+            if (TeamsScreens.listFiltered(root)) {
+                log("The ${tab.label} list is filtered")
+                throw SyncAbort(SyncAbort.NARROWED)
+            }
+            cards
         }
     }
 

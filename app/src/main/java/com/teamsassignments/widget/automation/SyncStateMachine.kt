@@ -47,11 +47,11 @@ class SyncStateMachine(
         for ((index, item) in ordered.withIndex()) {
             checkAbort()
             val (tab, card) = item
-            val listDueAt = parser.parseList(card.headerDate, card.headerLabel, card.dueLine)?.toEpochMilli()
+            val listDueAt = parser.parseList(card.headerDate, card.headerLabel, card.dueLine, tab.toAssignmentTab())?.toEpochMilli()
             val old = previousByKey[card.id]
             val assignment = if (!full && old != null && isFresh(old, card, listDueAt)) {
                 log("Kept saved details for \"${card.title}\"")
-                old.copy(tab = tab.toAssignmentTab(), lastSyncedAt = wallClock())
+                old.copy(tab = tab.toAssignmentTab(), listDueAt = listDueAt, lastSyncedAt = wallClock())
             } else {
                 readDetail(tab, card, listDueAt, old)
             }
@@ -100,6 +100,8 @@ class SyncStateMachine(
     private suspend fun collectMore(tab: Tab, firstPage: List<ListCard>): List<ListCard> {
         val root = device.teamsRoot() ?: return firstPage
         if (listEndsOnScreen(root, firstPage) && !TeamsScreens.loadMorePending(root)) return firstPage
+        // A tab with nothing on it has no list to scroll, only the words saying so.
+        if (firstPage.isEmpty() && TeamsScreens.wholeListInTree(root)) return firstPage
         val cards = collectRest(tab, firstPage)
         cards.firstOrNull()?.let { top ->
             device.teamsRoot()?.let { TeamsScreens.findCard(it, top.id) }?.perform(UiAction.ShowOnScreen)
@@ -167,6 +169,7 @@ class SyncStateMachine(
             links = detail?.links ?: old?.links.orEmpty(),
             dueText = detail?.dueText ?: listOfNotNull(card.headerDate, card.dueLine).joinToString(" · "),
             dueAt = detailDueAt ?: listDueAt,
+            listDueAt = listDueAt,
             tab = tab.toAssignmentTab(),
             // An earlier read only stays valid while the row is unchanged; otherwise the next
             // sync must try the details again rather than trust stale ones for days.
@@ -184,6 +187,11 @@ class SyncStateMachine(
         return wallClock() - readAt < detailReuseMs && rowUnchanged(old, card, listDueAt)
     }
 
+    /**
+     * Whether the list shows [old] as it did: list against list, since the detail screen's due
+     * time, saved as [Assignment.dueAt], can differ from the list's. Rows saved before 0.5.0 have
+     * no list time of their own, and are told by the one they have.
+     */
     private fun rowUnchanged(old: Assignment, card: ListCard, listDueAt: Long?): Boolean =
-        old.title == card.title && old.dueAt == listDueAt
+        old.title == card.title && (old.listDueAt ?: old.dueAt) == listDueAt
 }

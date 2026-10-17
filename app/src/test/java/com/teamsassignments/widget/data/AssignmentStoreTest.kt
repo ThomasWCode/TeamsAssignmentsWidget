@@ -156,6 +156,17 @@ class AssignmentStoreTest {
         assertEquals(listOf(physics, hausaufgabe), store.state.value.assignments)
     }
 
+    @Test
+    fun `both lists seen in full are noted, though nothing changed`() = runTest {
+        val store = AssignmentStore(file, clock)
+        store.saveSuccess(listOf(physics))
+        store.applyObserved { saved, _ -> AssignmentStore.Observed(saved, listsSeenAt = 1_790_000_000_000) }
+        assertEquals(1_790_000_000_000, store.state.value.listsSeenAt)
+        // A look that sees less leaves the time as it was, and it survives a restart.
+        store.applyObserved { saved, _ -> AssignmentStore.Observed(saved) }
+        assertEquals(1_790_000_000_000, AssignmentStore(file, clock).state.value.listsSeenAt)
+    }
+
     private class SettableClock(var now: Instant) : Clock() {
         override fun instant(): Instant = now
         override fun getZone() = ZoneOffset.UTC

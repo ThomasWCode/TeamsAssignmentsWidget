@@ -54,6 +54,44 @@ object TeamsScreens {
     fun selectedTab(root: UiNode): Tab? = Tab.entries.firstOrNull { root.findById(it.viewId)?.isSelected == true }
 
     /**
+     * Whose work a list holds. The Assignments app's own list, titled `Assignments`, holds every
+     * class's ([className] null). A class team's Assignments tab, titled with the class's name,
+     * holds that class's alone, and its cards leave the class out. Either is [narrowed] to less
+     * than that by Filter → Classes (its chip shows) or a search by title (the box holds text),
+     * as is a list whose toolbar can't be read.
+     */
+    data class ListScope(val className: String?, val narrowed: Boolean)
+
+    fun listScope(root: UiNode): ListScope {
+        val title = root.findById(TeamsSelectors.TOOLBAR_TITLE)?.text?.squash().orEmpty()
+        return ListScope(
+            className = title.takeIf { it.isNotEmpty() && it != TeamsSelectors.ASSIGNMENTS_TITLE },
+            narrowed = listFiltered(root) || title.isEmpty(),
+        )
+    }
+
+    /** Whether the list is filtered by class (the chip to clear it shows) or searched by title (the box holds text). */
+    fun listFiltered(root: UiNode): Boolean = root.walk().any {
+        TeamsSelectors.CLEAR_CLASS_FILTER.matches(it.contentDescription.squash()) ||
+            (it.className.endsWith("EditText") && it.text.isNotBlank())
+    }
+
+    /** Whether [tab], selected, shows that it has nothing on it (see [TeamsSelectors.emptyList]). */
+    fun emptyListShown(root: UiNode, tab: Tab): Boolean {
+        val empty = TeamsSelectors.emptyList(tab)
+        return root.walk().any { !it.bounds.isEmpty && empty.containsMatchIn(it.text.squash()) }
+    }
+
+    /**
+     * Whether the Past due tab says it holds work ([TeamsSelectors.PAST_DUE_MARKER]), or null
+     * while it is the tab selected, which never says.
+     */
+    fun pastDueMarked(root: UiNode): Boolean? {
+        val tab = tabNode(root, Tab.PastDue)?.takeIf { !it.isSelected } ?: return null
+        return tab.contentDescription.squash() == TeamsSelectors.PAST_DUE_MARKER
+    }
+
+    /**
      * Whether Teams' window is fully in place. While a screen slides in, its window reports an
      * offset: captured on the phone mid-Back as `[-337,0][743,2340]` instead of `[0,0][1080,2340]`.
      */
@@ -127,11 +165,12 @@ object TeamsScreens {
      * they're past (at the top once scrolled past, at the bottom until reached), so this holds
      * scrolled or not. A list that only held the rows in view, as a virtualised one would, has to
      * be scrolled through, as does one whose "load more" placeholder is still waiting to be
-     * reached ([loadMorePending]).
+     * reached ([loadMorePending]). A tab with nothing on it has no list at all, only the words
+     * saying so ([emptyListShown]), and is whole too.
      */
     fun wholeListInTree(root: UiNode): Boolean {
         if (loadMorePending(root)) return false
-        val list = listNode(root) ?: return false
+        val list = listNode(root) ?: return selectedTab(root)?.let { emptyListShown(root, it) } == true && cards(root).isEmpty()
         val view = viewport(root)
         val ends = listInView(root) ?: return false
         // The list's own rows (date groups, the Past due footer) and its cards.
@@ -195,13 +234,14 @@ object TeamsScreens {
         val text = card.label.squash()
         if (text.isEmpty()) return null
         val match = TeamsSelectors.COLLAPSED_CARD.matchEntire(text)
+        val rest = match?.groupValues?.get(3).orEmpty()
         return ListCard(
             id = card.viewId,
             title = match?.groupValues?.get(1) ?: text,
             dueLine = match?.groupValues?.get(2).orEmpty(),
-            // With a tag the rest reads `• Challenge Physics …`, which can't be split reliably;
-            // the detail screen's toolbar supplies the real class name.
-            className = match?.groupValues?.get(3)?.removePrefix(TeamsSelectors.SEPARATOR)?.trim().orEmpty(),
+            // With a tag the rest reads `• Challenge Physics …`, which can't be split reliably, so
+            // the class is left unknown; the detail screen's toolbar supplies the real one.
+            className = if (rest.startsWith(TeamsSelectors.SEPARATOR)) "" else rest.trim(),
             tag = null,
             headerDate = headerDate,
             headerLabel = headerLabel,
