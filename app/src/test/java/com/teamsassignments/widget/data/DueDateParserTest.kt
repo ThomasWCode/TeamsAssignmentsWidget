@@ -98,6 +98,23 @@ class DueDateParserTest {
         assertEquals(utc("2026-12-30T09:00:00Z"), january.parseList("30 Dec", "Due 3 days ago", "Due at 09:00"))
     }
 
+    @Test
+    fun `list - the tab says which year a date far off is in`() {
+        // Review: closest to today, an end-of-year project seen in October fell in the May just
+        // gone, and showed as overdue; work long past due seen in January fell in the June to come.
+        val october = DueDateParser(Clock.fixed(Instant.parse("2026-10-01T12:00:00Z"), london))
+        assertEquals(utc("2026-05-15T07:00:00Z"), october.parseList("15 May", null, "Due at 08:00"))
+        assertEquals(utc("2027-05-15T07:00:00Z"), october.parseList("15 May", null, "Due at 08:00", AssignmentTab.Forthcoming))
+
+        val january = DueDateParser(Clock.fixed(Instant.parse("2027-01-10T12:00:00Z"), london))
+        assertEquals(utc("2027-06-15T08:00:00Z"), january.parseList("15 Jun", null, "Due at 09:00"))
+        assertEquals(utc("2026-06-15T08:00:00Z"), january.parseList("15 Jun", null, "Due at 09:00", AssignmentTab.PastDue))
+
+        // Today is on both: Teams lists work that fell due earlier today on Forthcoming too.
+        assertEquals(utc("2026-09-28T07:00:00Z"), parser.parseList("28 Sept", "Today", "Due at 08:00", AssignmentTab.Forthcoming))
+        assertEquals(utc("2026-09-28T07:00:00Z"), parser.parseList("28 Sept", "Due earlier today", "Due at 08:00", AssignmentTab.PastDue))
+    }
+
     // Buckets
 
     @Test

@@ -93,4 +93,31 @@ class LookPacerTest {
         assertTrue(pacer.owed)
         assertTrue(pacer.shouldLook(4_300, screenChanged = false))
     }
+
+    @Test
+    fun `a screen read while still settling is owed another look`() {
+        val pacer = LookPacer()
+        assertTrue(pacer.shouldLook(0, screenChanged = false))
+        pacer.looked(Outcome.Read, 0, settling = true)
+        assertTrue(pacer.owed)
+        assertTrue(pacer.shouldLook(700, screenChanged = false))
+        pacer.looked(Outcome.Read, 700, settling = false)
+        assertFalse(pacer.owed)
+    }
+
+    @Test
+    fun `a copy that keeps failing gets five looks, the screen settling or not`() {
+        // Review: the service also looked while the observer said it was settling, which a failed
+        // copy never changed, so a copy that kept failing was retried every 0.7 s for as long as
+        // the user stayed on the screen.
+        val pacer = LookPacer()
+        pacer.looked(Outcome.Read, 0, settling = true)
+        repeat(4) {
+            assertTrue(pacer.shouldLook(700, screenChanged = false))
+            pacer.looked(Outcome.Failed, 700)
+            assertTrue(pacer.owed)
+        }
+        pacer.looked(Outcome.Failed, 700)
+        assertFalse(pacer.owed)
+    }
 }

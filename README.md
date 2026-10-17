@@ -35,7 +35,12 @@ When you open Assignments in Teams yourself, the app reads what's on screen, wit
 - changed titles and due times are updated;
 - opening an assignment saves its instructions, and adds it if the list hadn't shown it yet (say you came from a Teams notification);
 - anything Teams shows as done is removed: everything on the Completed list, and an assignment whose own screen says it's handed in;
-- an assignment on **neither** Forthcoming nor Past due is taken as handed in, once you've seen both lists in full, within ten minutes of each other.
+- an assignment on **neither** Forthcoming nor Past due is taken as handed in, once you've seen both lists in full, within ten minutes of each other. Forthcoming has a red dot by *Past due* while Past due holds work; without it, Past due counts as seen, and empty;
+- an assignment due later than now that isn't on Forthcoming, once you've seen Forthcoming in full, is taken as handed in too: only a hand-in (or the teacher) takes such work off it. So work handed in on a laptop goes from the widget the next time you open Assignments on the phone;
+- a class team's own **Assignments** tab (Teams → the class → Assignments) counts for that class alone. Its Past due goes back further than the app's own list, which a sync reads, so it only updates work the widget already has;
+- a list narrowed by **Filter** (to some classes) or a search adds and updates as any other, but never counts as seen in full. A sync, row tap or hand-in stops on one, and says to clear the filter.
+
+When you've seen both lists in full, every class's and unfiltered, the widget's *Updated* time moves to then, as after a sync.
 
 A list only counts once it has fully loaded, by the same tests a sync uses: the tab is selected, nothing is loading, the cards have stayed the same for 0.6 s (an empty list for 2 s, or 6 s if that tab had work at the last sync), and a tab you've just switched to isn't still showing the last tab's cards. *In full* means every card. Teams puts every card it has loaded where the app can read it, cards off screen included, so one look is usually enough. A long list, though, it loads in pages (Past due did once it held seven cards): until you've scrolled to its end, it may have more to come, and doesn't count in full. Should an update ever stop Teams putting off-screen cards there at all, you'd likewise have to scroll from one end of a list to the other, pausing as you go, for it to count.
 
@@ -56,7 +61,7 @@ Apps signed with this app's key, such as [Decrastination](https://github.com/Tho
 | URI or call | What it gives |
 |---|---|
 | `content://com.teamsassignments.widget.assignments/assignments` | One row per assignment not handed in, in the widget's order: `key`, `title`, `class_name`, `description`, `due_text`, `due_at`, `tab`, `detail_read_at`, `last_synced_at`, `attachments` (the reference materials' file names, one a line) and `links` (the web addresses its instructions link to, one a line) |
-| `content://com.teamsassignments.widget.assignments/state` | One row: `last_success_at`, `status`, `status_message`, `status_at`, `assignment_count`, `sync_service_enabled` |
+| `content://com.teamsassignments.widget.assignments/state` | One row: `last_success_at`, `status`, `status_message`, `status_at`, `assignment_count`, `sync_service_enabled`, `lists_seen_at` (when both lists were last seen in full while you had Teams open) |
 | `call(root, "requestSync", null, null)` | Starts a sync, as ↻ does. The result has `started`, and `reason` when it didn't: `service_off` or `busy` |
 | `call(root, "open", key, null)` | Opens that assignment in Teams, as a row tap does. One more `reason`: `unknown_key` |
 
@@ -145,6 +150,7 @@ scripts/       derive_fixtures.py: builds the edge-case fixtures from the captur
 - reading along while Teams is open: instructions saved on opening an assignment, from the list, from Teams' Activity feed or after a row tap, an assignment handed in within Teams taken off the list, and one whose hand-in was undone there brought back;
 - work handed in on another device: taken off once both open lists have been seen close together (and not on one list alone, or on two seen more than 10 minutes apart), taken off by a row tap or a hand-in that finds it on neither, and brought back once the hand-in is undone;
 - a sync with seven overdue assignments, which Teams pages: its "load more" placeholder brought into view, then every card read (8 Oct, 0.3.1; see [Paged lists](docs/teams-ui-notes.md#paged-lists-031-on-the-phone-8-oct));
+- reading along on 0.5.0: both lists seen in full moving *Updated* on without a sync, every row keeping its instructions, and a class team's own Assignments tab read without touching other classes' work (17 Oct; see [Class teams, filters and empty tabs](docs/teams-ui-notes.md#class-teams-filters-and-empty-tabs-17-oct));
 - the provider read by Decrastination, signed with the same key, and refused to `adb shell`; its sync and open calls both starting (8 Oct, 0.3.0).
 
 The 1 October run, what it turned up, and the fixes that followed in 0.2.1, are under [Deferred live tests](docs/teams-ui-notes.md#deferred-live-tests). **Not checked:** work opened from a Teams notification, and the Hand in pill's icon form (below 250 dp, narrower than this phone's launcher allows).
@@ -154,4 +160,4 @@ The 1 October run, what it turned up, and the fixes that followed in 0.2.1, are 
 - **Tied to the Teams app's layout and English (en-GB) wording.** An update to Teams can break syncing until `TeamsSelectors.kt` is updated.
 - **Takes over the screen while syncing** and while handing in. Syncing is manual only, and doesn't run while the phone is locked; browsing Assignments in Teams updates the list without taking over. The widget still redraws at midnight and as deadlines pass, from saved data, so "Today" and "Overdue" stay right.
 - Assignments you've handed in, and anything older than Teams' *Past due* list, aren't shown.
-- **A hand-in undone on another device isn't noticed from a list for 12 hours**, as a list alone can't be told from one Teams hasn't refreshed. Opening the assignment in Teams, or a sync, brings it back.
+- **A hand-in undone on another device isn't noticed from a list for 12 hours**, as a list alone can't be told from one Teams hasn't refreshed. Opening the assignment in Teams, or a sync, brings it back. The same goes for work returned for revision within 12 hours of the widget seeing it handed in.

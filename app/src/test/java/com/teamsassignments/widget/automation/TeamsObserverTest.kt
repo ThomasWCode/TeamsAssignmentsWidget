@@ -131,7 +131,7 @@ class TeamsObserverTest {
     @Test
     fun `updates a changed row and drops its details until they're read again`() {
         val saved = merge(TeamsObserver().see("list_forthcoming"), emptyList()).assignments.map {
-            if (it.key == hausaufgabe) it.copy(dueAt = 0, description = "Old instructions", detailReadAt = 1L) else it
+            if (it.key == hausaufgabe) it.copy(dueAt = 0, listDueAt = 0, description = "Old instructions", detailReadAt = 1L) else it
         }
         val merged = merge(TeamsObserver().see("list_forthcoming"), saved)
         assertEquals(listOf("updated \"Hausaufgabe Jugendkultur Vokabeln\""), merged.changes)
@@ -175,16 +175,19 @@ class TeamsObserverTest {
     }
 
     @Test
-    fun `remembers what Completed shows, even once it's off the list`() {
-        // Codex review: work already taken as handed in, then seen on Completed, is remembered
-        // too, or a list Teams hasn't refreshed could add it back.
+    fun `remembers what Completed shows of the list, and nothing else`() {
+        // Review: Completed holds weeks of work (on the phone on 17 Oct it went back to the 9th).
+        // Remembering all of it as handed in kept any that came back, returned for revision or
+        // reopened, off the list for 12 hours. Only work that was on the list needs keeping off a
+        // list Teams hasn't refreshed.
         val cards = TeamsScreens.cards(Fixtures.load("list_completed"))
-        val merged = merge(TeamsObserver().see("list_completed"), emptyList())
+        val listed = cards.take(2).map { Assignment(key = it.id, title = it.title, className = it.className) }
+        val merged = merge(TeamsObserver().see("list_completed"), listed)
         assertTrue(merged.assignments.isEmpty())
-        assertTrue(merged.changes.isEmpty())
-        assertEquals(cards.map { it.id }.toSet(), merged.handedIn.toSet())
+        assertEquals(listed.map { it.key }.toSet(), merged.handedIn.toSet())
+        assertTrue(merge(TeamsObserver().see("list_completed"), emptyList()).handedIn.isEmpty())
         // Those already remembered aren't reported again.
-        val again = merge(TeamsObserver().see("list_completed"), emptyList(), recentlyHandedIn = merged.handedIn.associateWith { null })
+        val again = merge(TeamsObserver().see("list_completed"), listed, recentlyHandedIn = merged.handedIn.associateWith { null })
         assertTrue(again.handedIn.isEmpty())
     }
 
@@ -259,6 +262,9 @@ class TeamsObserverTest {
         assertEquals(listOf(gone.key), both.presumed)
         // Not remembered as handed in: were it wrong, the list showing it would bring it back.
         assertTrue(both.handedIn.isEmpty())
+        // Both lists seen in full: the list is as up to date as a sync would leave it.
+        assertNull(forthcoming.listsSeenAt)
+        assertNotNull(both.listsSeenAt)
         assertTrue("\"Handed in on the laptop\" is on neither Forthcoming nor Past due: taken as handed in" in both.changes)
     }
 
@@ -290,7 +296,10 @@ class TeamsObserverTest {
         observer.see("list_forthcoming")
         assertNotNull(assertIs<Sighting.OnList>(observer.see("list_past_due", at = 2_000)).openLists)
 
-        assertNull(assertIs<Sighting.OnList>(observer.see("list_past_due_load_more", at = 4_000)).openLists)
+        // Forthcoming's view alone stands for now: only work due later than it was seen can be missing.
+        val lists = assertNotNull(assertIs<Sighting.OnList>(observer.see("list_past_due_load_more", at = 4_000)).openLists)
+        assertNotNull(lists.dueAfter)
+        assertEquals(TeamsScreens.cards(Fixtures.load("list_forthcoming")).map { it.id }.toSet(), lists.ids)
     }
 
     @Test
@@ -675,7 +684,7 @@ class TeamsObserverTest {
 
         val fromList = merge(TeamsObserver().see("list_forthcoming"), fromDetail.assignments, recentlyHandedIn = remembered)
         assertEquals(7, fromList.assignments.size)
-        assertTrue("added \"Particle Physics Test\"" in fromList.changes, fromList.changes.toString())
+        assertTrue("\"Particle Physics Test\" took its Teams id" in fromList.changes, fromList.changes.toString())
         with(fromList.assignments.single { it.key == physics }) {
             assertTrue(description.startsWith("1) Use results"), description)
             assertNotNull(detailReadAt)
@@ -685,5 +694,243 @@ class TeamsObserverTest {
     @Test
     fun `adds nothing from a handed-in detail screen`() {
         assertTrue(merge(TeamsObserver().see("detail_4c958b24_handed_in"), emptyList()).assignments.isEmpty())
+    }
+
+    // From the review of reading along (docs/review/reading-along.md)
+
+    @Test
+    fun `a handed-in screen with no due time takes nothing off the list`() {
+        // Last week's work, handed in and opened from Completed, against this week's of the same
+        // title and class: with no due time to tell them apart, it took this week's off the list,
+        // and kept it off for 12 hours.
+        val detail = assertNotNull(TeamsScreens.detail(Fixtures.load("detail_4c958b24_handed_in"))).copy(dueText = null)
+        val thisWeek = Assignment(key = physics, title = "Particle Physics Test", className = "12.2-PH3", dueAt = millis("2026-10-06T07:30:00Z"))
+        val merged = merge(Sighting.OnDetail(detail, classInToolbar = true), listOf(thisWeek))
+        assertEquals(listOf(thisWeek), merged.assignments)
+        assertTrue(merged.handedIn.isEmpty())
+    }
+
+    @Test
+    fun `the list's due time doesn't overwrite its own screen's`() {
+        // The list's time took over, so the detail screen no longer matched to put it right, and a
+        // sync and reading along took turns at it, each time marking the details unread.
+        val listTime = millis("2026-09-29T07:30:00Z")
+        val screenTime = millis("2026-09-29T08:00:00Z")
+        val read = Assignment(
+            key = physics, title = "Particle Physics Test", className = "12.2-PH3", description = "Read",
+            dueAt = screenTime, listDueAt = listTime, detailReadAt = 1L,
+        )
+        val merged = merge(TeamsObserver().see("list_forthcoming"), listOf(read))
+        with(merged.assignments.single { it.key == physics }) {
+            assertEquals(screenTime, dueAt)
+            assertEquals(1L, detailReadAt)
+        }
+        assertTrue(merged.changes.none { "Particle" in it }, merged.changes.toString())
+
+        // A row saved before 0.5.0 has no list time of its own: the list's is noted, quietly.
+        val legacy = read.copy(dueAt = listTime, listDueAt = null)
+        val noted = merge(TeamsObserver().see("list_forthcoming"), listOf(legacy))
+        assertEquals(listTime, noted.assignments.single { it.key == physics }.listDueAt)
+        assertTrue(noted.changes.none { "Particle" in it }, noted.changes.toString())
+    }
+
+    @Test
+    fun `a collapsed card cut short gives a row its Teams id, and the row keeps its title`() {
+        // It took the card's title, and its own screen, which matches titles exactly, then saw no
+        // row of its title and added a second.
+        val fromDetail = merge(TeamsObserver().see("detail_4c958b24"), emptyList()).assignments
+        val cut = Sighting.OnList(
+            Tab.Forthcoming,
+            listOf(
+                ListCard(
+                    id = physics, title = "Particle Physics", dueLine = "Due at 08:30", className = "12.2-PH3", tag = null,
+                    headerDate = "29 Sept", headerLabel = "Tomorrow", collapsed = true, bounds = IntRect.EMPTY,
+                ),
+            ),
+        )
+        val keyed = merge(cut, fromDetail)
+        with(keyed.assignments.single()) {
+            assertEquals(physics, key)
+            assertEquals("Particle Physics Test", title)
+        }
+        assertEquals(listOf("\"Particle Physics Test\" took its Teams id"), keyed.changes)
+        assertEquals(1, merge(TeamsObserver().see("detail_4c958b24"), keyed.assignments).assignments.size)
+    }
+
+    @Test
+    fun `its own screen puts right a title a collapsed card cut short`() {
+        val cutShort = Assignment(key = physics, title = "Particle Physics", className = "12.2-PH3", dueAt = millis("2026-09-29T07:30:00Z"))
+        val merged = merge(TeamsObserver().see("detail_4c958b24"), listOf(cutShort))
+        assertEquals(listOf("read \"Particle Physics Test\""), merged.changes)
+        assertEquals("Particle Physics Test", merged.assignments.single().title)
+        // Not with the due time disagreeing: that's other work, left to the list, and no row is added.
+        val otherWeek = cutShort.copy(dueAt = millis("2026-09-22T07:30:00Z"))
+        assertEquals(listOf(otherWeek), merge(TeamsObserver().see("detail_4c958b24"), listOf(otherWeek)).assignments)
+    }
+
+    @Test
+    fun `a class whose name ends in another's is another class`() {
+        // On the phone, "Physics Skills & Stretch 12.2-PH3" and "12.2-PH3" are two teams. Matching
+        // one name's end against the other let one class's screen take the other's work off the list.
+        val stretch = Assignment(
+            key = physics, title = "Particle Physics Test", className = "Physics Skills & Stretch 12.2-PH3",
+            dueAt = millis("2026-09-29T07:30:00Z"),
+        )
+        assertEquals(listOf(stretch), merge(TeamsObserver().see("detail_4c958b24_handed_in"), listOf(stretch)).assignments)
+    }
+
+    @Test
+    fun `work seen open since the earlier view isn't taken as handed in for missing from it`() {
+        // Its hand-in undone on its own screen between the two looks, say: Forthcoming's view, from
+        // before, can't show it, and Teams' Past due may not have caught up.
+        val observer = TeamsObserver()
+        observer.see("list_forthcoming")
+        val undone = gone.copy(lastSyncedAt = clock.millis() + 1_000)
+        assertTrue(merge(observer.see("list_past_due", at = 2_000), listOf(undone)).presumed.isEmpty())
+    }
+
+    @Test
+    fun `a list looked at again unchanged counts as seen in full as of then`() {
+        // Its first look stood for it for ten minutes from then, however long the user stayed.
+        val observer = TeamsObserver()
+        observer.see("list_forthcoming")
+        assertNull(observer.lookAt(Fixtures.load("list_forthcoming"), 9 * 60_000L))
+        assertEquals(listOf(gone.key), merge(observer.see("list_past_due", at = 15 * 60_000L), listOf(gone)).presumed)
+    }
+
+    @Test
+    fun `an empty open tab, shown without a list, counts as seen in full`() {
+        // Captured on 17 Oct: a tab with nothing on it has no list, only the words saying so.
+        val observer = TeamsObserver()
+        val saved = merge(observer.see("list_forthcoming"), listOf(gone)).assignments
+        val empty = Fixtures.load("list_past_due_empty")
+        assertNull(observer.lookAt(empty, 2_000))
+        val sighting = assertNotNull(observer.lookAt(empty, 4_000))
+        assertEquals(listOf(gone.key), merge(sighting, saved).presumed)
+    }
+
+    // Forthcoming alone, and the Past due tab's mark
+
+    @Test
+    fun `Forthcoming seen in full takes later work missing from it as handed in`() {
+        // On the phone on 17 Oct, work due on the 19th was handed in elsewhere at 11:40 and stayed on
+        // the widget until the next sync: Past due had to be seen in full as well.
+        val later = gone.copy(dueAt = millis("2026-10-02T07:30:00Z"))
+        val merged = merge(TeamsObserver().see("list_forthcoming"), listOf(later))
+        assertEquals(listOf(later.key), merged.presumed)
+        assertTrue(merged.handedIn.isEmpty())
+        assertNull(merged.listsSeenAt, "Past due wasn't seen")
+    }
+
+    @Test
+    fun `Forthcoming alone leaves work that Past due may hold`() {
+        // Due before Forthcoming was seen, or around then, or at no time known.
+        val overdue = gone.copy(key = "22222222-3333-4444-5555-666666666666", dueAt = clock.millis() - 3_600_000, tab = AssignmentTab.PastDue)
+        val fallingDue = gone.copy(key = "33333333-4444-5555-6666-777777777777", dueAt = clock.millis() + 60_000)
+        val unknown = gone.copy(key = "44444444-5555-6666-7777-888888888888", dueAt = null)
+        assertTrue(merge(TeamsObserver().see("list_forthcoming"), listOf(overdue, fallingDue, unknown)).presumed.isEmpty())
+    }
+
+    @Test
+    fun `Past due without its mark counts as seen in full, and empty`() {
+        // Teams marks the Past due tab while it holds work (captured 17 Oct). Without its mark,
+        // Forthcoming seen in full is enough for late work handed in elsewhere too.
+        val late = gone.copy(dueAt = clock.millis() - 3 * 3_600_000, tab = AssignmentTab.PastDue)
+        val clear = Fixtures.load("list_forthcoming_past_due_clear")
+        val observer = TeamsObserver()
+        // With late work saved, an unmarked tab is as suspect as an empty list: it must hold for 6 s.
+        assertNull(observer.lookAt(clear, 0, listOf(late)))
+        assertNull(observer.lookAt(clear, 5_000, listOf(late)))
+        assertTrue(observer.settling)
+        val sighting = assertIs<Sighting.OnList>(observer.lookAt(clear, 6_000, listOf(late)))
+        assertEquals(false, sighting.pastDueMarked)
+        val merged = merge(sighting, listOf(late))
+        assertEquals(listOf(late.key), merged.presumed)
+        assertNotNull(merged.listsSeenAt)
+
+        // Marked again, Past due no longer counts as empty.
+        val marked = TeamsObserver()
+        marked.see("list_forthcoming_past_due_clear")
+        assertTrue(merge(marked.see("list_forthcoming", at = 2_000), listOf(late)).presumed.isEmpty())
+    }
+
+    // Narrowed lists, and a class team's own tab
+
+    /** 17 Oct 2026, 17:20 BST, when the class team and filtered lists were captured. */
+    private val oct17 = Clock.fixed(Instant.parse("2026-10-17T16:20:00Z"), ZoneId.of("Europe/London"))
+    private val german = "12.1 German 2026-27"
+
+    private fun merge17(sighting: Sighting, saved: List<Assignment>) =
+        TeamsObserver.merge(sighting, saved, DueDateParser(oct17), oct17.millis())
+
+    /** As [see], on the 17 Oct captures' clock, the screen held still for [hold] milliseconds. */
+    private fun TeamsObserver.see17(fixture: String, at: Long = 0L, saved: List<Assignment> = emptyList(), hold: Long = 700): Sighting {
+        val root = Fixtures.load(fixture)
+        assertNull(look(root, at, oct17.millis() + at, saved), fixture)
+        return assertNotNull(look(root, at + hold, oct17.millis() + at + hold, saved), fixture)
+    }
+
+    @Test
+    fun `a list narrowed by Filter never counts as seen in full`() {
+        // Captured on 17 Oct with Filter → Classes set to 10H: the toolbar still reads Assignments,
+        // and Forthcoming, empty for that class, would take every other class's work as handed in.
+        val later = gone.copy(className = german, dueAt = millis("2026-10-19T08:00:00Z"))
+        val filtered = assertIs<Sighting.OnList>(TeamsObserver().see17("list_forthcoming_filtered", saved = listOf(later), hold = 6_000))
+        assertEquals(TeamsScreens.ListScope(className = null, narrowed = true), filtered.scope)
+        assertNull(filtered.openLists)
+        assertNull(filtered.pastDueMarked, "the filter hides other classes' late work too")
+        assertEquals(listOf(later), merge17(filtered, listOf(later)).assignments)
+    }
+
+    @Test
+    fun `reads a class team's own tab, the class from its toolbar`() {
+        // Captured on 17 Oct: the toolbar is titled with the class, and the cards leave it out.
+        val sighting = assertIs<Sighting.OnList>(TeamsObserver().see17("list_class_forthcoming"))
+        assertEquals(TeamsScreens.ListScope(className = german, narrowed = false), sighting.scope)
+        val merged = merge17(sighting, emptyList())
+        assertEquals(listOf("2fe18689-f75e-4244-a4a0-9f44df63cef4", "239336fa-d894-402c-95fa-fa68070ec910"), merged.assignments.map { it.key })
+        assertTrue(merged.assignments.all { it.className == german })
+        assertEquals(millis("2026-10-19T08:00:00Z"), merged.assignments.first().dueAt)
+        assertNull(merged.listsSeenAt)
+    }
+
+    @Test
+    fun `a class team's Past due only keeps what's saved up to date`() {
+        // It reaches back further than the app's own list, which a sync reads: work only it
+        // showed would come and go.
+        val prep = Assignment(
+            key = "d52b6b3b-0567-46d2-abc3-8acbc5744f50", title = "Prep and Assessment", className = german,
+            dueAt = 0, listDueAt = 0, tab = AssignmentTab.PastDue,
+        )
+        val merged = merge17(TeamsObserver().see17("list_class_past_due"), listOf(prep))
+        with(merged.assignments.single()) {
+            assertEquals(prep.key, key)
+            assertEquals("Prep and Assessment preparation", title)
+            assertEquals(millis("2026-10-08T08:00:00Z"), dueAt)
+        }
+    }
+
+    @Test
+    fun `a class team's two tabs seen in full count for that class alone`() {
+        val threeDaysAgo = oct17.millis() - 3 * 24 * 3_600_000L
+        val missing = gone.copy(className = german, dueAt = threeDaysAgo, tab = AssignmentTab.PastDue)
+        val otherClass = gone.copy(key = "66666666-7777-8888-9999-000000000000", className = "12.2-PH3", dueAt = threeDaysAgo, tab = AssignmentTab.PastDue)
+        val observer = TeamsObserver()
+        val forthcoming = merge17(observer.see17("list_class_forthcoming", saved = listOf(missing, otherClass)), listOf(missing, otherClass))
+        assertTrue(forthcoming.presumed.isEmpty(), "late work may be on Past due")
+        val both = merge17(observer.see17("list_class_past_due", at = 2_000, saved = forthcoming.assignments), forthcoming.assignments)
+        assertEquals(listOf(missing.key), both.presumed)
+        assertTrue(both.assignments.any { it.key == otherClass.key })
+        assertNull(both.listsSeenAt, "one class's lists aren't every class's")
+    }
+
+    @Test
+    fun `a class team's empty Forthcoming takes that class's later work as handed in`() {
+        // Captured on 17 Oct: a class with nothing set, its Past due unmarked and empty too.
+        val avg = "12.2-PH3 AVG (2026-28)"
+        val later = gone.copy(className = avg, dueAt = millis("2026-10-20T08:00:00Z"))
+        val otherClass = later.copy(key = "66666666-7777-8888-9999-000000000000", className = german)
+        val sighting = TeamsObserver().see17("list_class_forthcoming_empty", saved = listOf(later, otherClass), hold = 6_000)
+        assertEquals(listOf(later.key), merge17(sighting, listOf(later, otherClass)).presumed)
     }
 }

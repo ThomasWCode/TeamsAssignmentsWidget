@@ -337,4 +337,16 @@ class NavigateStateMachineTest {
         assertFalse(navigate(device).run(target))
         assertTrue(UiAction.ScrollForward in device.scrolls)
     }
+
+    @Test
+    fun `a list filtered by class stops the search, rather than take the work as gone`() = runTest {
+        // Captured on 17 Oct with Filter → Classes set to 10H: every other class's work is off it.
+        val device = FakeTeamsDevice(
+            lists = mapOf(Tab.Forthcoming to "list_forthcoming_filtered", Tab.PastDue to "list_past_due", Tab.Completed to "list_completed"),
+        )
+        val machine = navigate(device)
+        val abort = kotlin.test.assertFailsWith<SyncAbort> { machine.run(gone) }
+        assertEquals(SyncAbort.NARROWED, abort.reason)
+        assertFalse(machine.notListed)
+    }
 }

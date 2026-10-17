@@ -37,6 +37,16 @@ class WidgetTextTest {
     }
 
     @Test
+    fun `both lists seen in full in Teams since the last sync count as an update`() {
+        fun subtitle(state: WidgetState) = WidgetText.subtitle(state, clock, use24Hour = true, locale = Locale.UK)
+        val seen = WidgetState(lastSuccessAt = millis("2026-09-28T08:00:00Z"), listsSeenAt = millis("2026-09-28T13:32:00Z"))
+        assertEquals("Updated 14:32 · nothing due", subtitle(seen))
+        assertEquals("Updated 14:32 · nothing due", subtitle(seen.copy(lastSuccessAt = null)))
+        // A sync since is the later.
+        assertEquals("Updated 14:35 · nothing due", subtitle(seen.copy(lastSuccessAt = millis("2026-09-28T13:35:00Z"))))
+    }
+
+    @Test
     fun `a sync the user stopped keeps the last update time`() {
         fun subtitle(state: WidgetState) = WidgetText.subtitle(state, clock, use24Hour = true, locale = Locale.UK)
         val synced = WidgetState(lastSuccessAt = millis("2026-09-28T13:32:00Z"))

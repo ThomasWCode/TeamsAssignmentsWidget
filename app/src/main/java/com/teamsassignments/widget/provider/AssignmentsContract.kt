@@ -80,7 +80,14 @@ object AssignmentsContract {
          */
         const val SYNC_SERVICE_ENABLED = "sync_service_enabled"
 
-        val COLUMNS = arrayOf(LAST_SUCCESS_AT, STATUS, STATUS_MESSAGE, STATUS_AT, ASSIGNMENT_COUNT, SYNC_SERVICE_ENABLED)
+        /**
+         * When Forthcoming and Past due were last both seen in full while the user had Teams open,
+         * in epoch milliseconds, or null if they haven't been: the list was as up to date then as
+         * a sync would have left it. The later of this and [LAST_SUCCESS_AT] is how fresh it is.
+         */
+        const val LISTS_SEEN_AT = "lists_seen_at"
+
+        val COLUMNS = arrayOf(LAST_SUCCESS_AT, STATUS, STATUS_MESSAGE, STATUS_AT, ASSIGNMENT_COUNT, SYNC_SERVICE_ENABLED, LISTS_SEEN_AT)
     }
 
     /**
