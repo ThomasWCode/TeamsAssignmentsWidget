@@ -53,15 +53,22 @@ class DueDateParser(private val clock: Clock) {
     /**
      * Parses a list card: its group's [headerDate] (`28 Sept`), the group's [headerLabel]
      * (`Today`, `Due 2 days ago`) and the card's [dueLine] (`Due at 08:30`).
-     * The header date wins; the label is the fallback.
+     * The header date wins; the label is the fallback. A header date without a year is put in
+     * the year [tab] allows, where that's known: Forthcoming's work isn't due before today, nor
+     * Past due's after it.
      */
-    fun parseList(headerDate: String?, headerLabel: String?, dueLine: String): Instant? {
+    fun parseList(headerDate: String?, headerLabel: String?, dueLine: String, tab: AssignmentTab? = null): Instant? {
         val today = now().toLocalDate()
         val time = LIST_DUE_LINE.matchEntire(normalise(dueLine))?.let { time(it, 1) } ?: return null
+        val allowed: (LocalDate) -> Boolean = when (tab) {
+            AssignmentTab.Forthcoming -> { date -> !date.isBefore(today) }
+            AssignmentTab.PastDue -> { date -> !date.isAfter(today) }
+            null -> { _ -> true }
+        }
 
         val date = headerDate?.let(::normalise)?.let { header ->
-            HEADER_DAY_MONTH.matchEntire(header)?.let { date(it.groupValues[1], it.groupValues[2], it.groupValues[3], today) }
-                ?: HEADER_MONTH_DAY.matchEntire(header)?.let { date(it.groupValues[2], it.groupValues[1], it.groupValues[3], today) }
+            HEADER_DAY_MONTH.matchEntire(header)?.let { date(it.groupValues[1], it.groupValues[2], it.groupValues[3], today, allowed) }
+                ?: HEADER_MONTH_DAY.matchEntire(header)?.let { date(it.groupValues[2], it.groupValues[1], it.groupValues[3], today, allowed) }
         } ?: headerLabel?.let { labelDate(normalise(it), today) } ?: return null
 
         return at(date, time)
@@ -104,14 +111,22 @@ class DueDateParser(private val clock: Clock) {
         return today.plusDays(Math.floorMod(target.value - today.dayOfWeek.value, 7).toLong())
     }
 
-    /** Builds a date; without a year, picks the year that puts it closest to [today]. */
-    private fun date(day: String, monthName: String, year: String, today: LocalDate): LocalDate? {
+    /**
+     * Builds a date. Without a year, it picks the year that puts it closest to [today] among those
+     * [allowed], or among all of them if none is.
+     */
+    private fun date(
+        day: String,
+        monthName: String,
+        year: String,
+        today: LocalDate,
+        allowed: (LocalDate) -> Boolean = { true },
+    ): LocalDate? {
         val month = MONTHS[monthName.lowercase().trimEnd('.')] ?: return null
         val dayOfMonth = day.toIntOrNull() ?: return null
         val years = year.toIntOrNull()?.let { listOf(it) } ?: listOf(today.year - 1, today.year, today.year + 1)
-        return years
-            .mapNotNull { runCatching { LocalDate.of(it, month, dayOfMonth) }.getOrNull() }
-            .minByOrNull { abs(ChronoUnit.DAYS.between(today, it)) }
+        val dates = years.mapNotNull { runCatching { LocalDate.of(it, month, dayOfMonth) }.getOrNull() }
+        return (dates.filter(allowed).ifEmpty { dates }).minByOrNull { abs(ChronoUnit.DAYS.between(today, it)) }
     }
 
     /** Reads the hour, minute and optional am/pm groups starting at [first]. */

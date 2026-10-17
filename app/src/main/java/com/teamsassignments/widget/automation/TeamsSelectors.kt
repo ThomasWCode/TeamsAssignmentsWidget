@@ -58,6 +58,24 @@ object TeamsSelectors {
     const val SEPARATOR = "•"
 
     /**
+     * What an open tab with nothing on it shows in place of its list, which isn't there at all:
+     * `No forthcoming assignments right now.`, `No past due assignments right now. 🎉`.
+     */
+    fun emptyList(tab: Tab) = Regex("""^No ${Regex.escape(tab.label)} assignments\b""", RegexOption.IGNORE_CASE)
+
+    /**
+     * The chip Filter → Classes leaves over the list, by its description: `Clear class 10H
+     * filter`. The list then holds the chosen classes' work alone.
+     */
+    val CLEAR_CLASS_FILTER = Regex("""^Clear class .+ filter$""", RegexOption.IGNORE_CASE)
+
+    /**
+     * The search box's placeholder over a filtered or class team's list. Reported as the box's
+     * text by no Teams seen so far, but should one, it isn't a search.
+     */
+    const val SEARCH_PLACEHOLDER = "Search by assignment title"
+
+    /**
      * A card that collapsed into one node after its detail screen was visited:
      * `<title> Due at 08:30 <class>`. The title group is greedy, so the *last* due phrase is taken
      * as the card's, keeping a title like `Homework Due at 09:00` intact.

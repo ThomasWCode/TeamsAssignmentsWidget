@@ -127,6 +127,12 @@ class ProviderRowsTest {
         assertNull(table.cell(0, State.STATUS_AT))
         assertEquals(2, table.cell(0, State.ASSIGNMENT_COUNT))
         assertEquals(1, table.cell(0, State.SYNC_SERVICE_ENABLED))
+        assertNull(table.cell(0, State.LISTS_SEEN_AT))
+        assertEquals(
+            1_759_000_300_000,
+            ProviderRows.state(saved.copy(listsSeenAt = 1_759_000_300_000), syncServiceEnabled = true, projection = null)
+                .cell(0, State.LISTS_SEEN_AT),
+        )
     }
 
     @Test

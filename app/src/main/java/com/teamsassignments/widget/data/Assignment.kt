@@ -22,8 +22,15 @@ data class Assignment(
     val links: List<String> = emptyList(),
     /** The due text as Teams showed it, kept for display when [dueAt] couldn't be parsed. */
     val dueText: String = "",
-    /** Due time in epoch milliseconds, or null if unknown. */
+    /** Due time in epoch milliseconds, or null if unknown: the detail screen's, where it was read. */
     val dueAt: Long? = null,
+    /**
+     * The due time the list last showed, which can differ from the detail screen's [dueAt] (a
+     * header's year is a guess). A changed row is told by this, list against list, so a list
+     * showing what it showed before doesn't make the detail screen's time look out of date.
+     * Null where no list has shown it, or the row was saved before 0.5.0.
+     */
+    val listDueAt: Long? = null,
     /** Where the card was found, so a row tap knows which tab to open. */
     val tab: AssignmentTab = AssignmentTab.Forthcoming,
     /** When the detail screen was last read; null if only the list row is known. */
@@ -69,6 +76,11 @@ data class WidgetState(
     val assignments: List<Assignment> = emptyList(),
     /** When the last sync finished successfully, in epoch milliseconds. */
     val lastSuccessAt: Long? = null,
+    /**
+     * When reading along last saw both open lists in full, every class's and unfiltered, in epoch
+     * milliseconds: the list was as up to date then as a sync would have left it.
+     */
+    val listsSeenAt: Long? = null,
     val status: SyncStatus = SyncStatus.Idle,
     /** Class name → index into [ClassColors.PALETTE], kept so colours survive re-syncs. */
     val classColors: Map<String, Int> = emptyMap(),
@@ -84,4 +96,7 @@ data class WidgetState(
      * Teams id and all (see TeamsObserver).
      */
     val handedInWork: List<Assignment> = emptyList(),
-)
+) {
+    /** When the list was last known to be up to date: the later of [lastSuccessAt] and [listsSeenAt]. */
+    val updatedAt: Long? get() = listOfNotNull(lastSuccessAt, listsSeenAt).maxOrNull()
+}

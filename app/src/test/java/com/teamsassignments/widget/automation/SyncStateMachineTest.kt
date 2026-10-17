@@ -152,18 +152,63 @@ class SyncStateMachineTest {
 
     @Test
     fun `a changed row is reread`() = runTest {
+        // The list showed another due time last time: the teacher has moved it.
         val first = machine(FakeTeamsDevice()).run(emptyList())
-        val edited = first.map { if (it.key == hausaufgabe) it.copy(dueAt = 0) else it }
+        val edited = first.map { if (it.key == hausaufgabe) it.copy(listDueAt = 0) else it }
         val device = FakeTeamsDevice()
         machine(device).run(previous = edited)
         assertEquals(listOf(hausaufgabe), device.opened)
+
+        // A row saved before 0.5.0 has no list time of its own, and is told by the one it has.
+        val legacy = first.map { if (it.key == hausaufgabe) it.copy(dueAt = 0, listDueAt = null) else it.copy(listDueAt = null) }
+        val again = FakeTeamsDevice()
+        machine(again).run(previous = legacy)
+        assertEquals(listOf(hausaufgabe), again.opened)
+    }
+
+    @Test
+    fun `a detail screen's due time unlike the list's doesn't make the row look changed`() = runTest {
+        // Review: told by the detail screen's time, such a row was reread on every sync.
+        val first = machine(FakeTeamsDevice()).run(emptyList())
+        val apart = first.map { if (it.key == hausaufgabe) it.copy(dueAt = it.dueAt!! + 3_600_000) else it }
+        val device = FakeTeamsDevice()
+        val second = machine(device).run(previous = apart)
+        assertTrue(device.opened.isEmpty(), device.opened.toString())
+        assertEquals(apart.single { it.key == hausaufgabe }.dueAt, second.single { it.key == hausaufgabe }.dueAt)
+    }
+
+    @Test
+    fun `a list filtered by class ends the sync, so nothing it hides is lost`() = runTest {
+        // Captured on 17 Oct with Filter → Classes set to 10H: the list holds that class's work alone.
+        val device = FakeTeamsDevice(
+            lists = mapOf(Tab.Forthcoming to "list_forthcoming_filtered", Tab.PastDue to "list_past_due", Tab.Completed to "list_completed"),
+        )
+        val abort = assertFailsWith<SyncAbort> { machine(device).run(emptyList()) }
+        assertEquals(SyncAbort.NARROWED, abort.reason)
+        assertTrue(device.opened.isEmpty())
+    }
+
+    @Test
+    fun `waits for the app's own list when Teams resumes on a class team's`() = runTest {
+        // A class team's Assignments tab, with the same tabs, holds that class's work alone.
+        val resumed = FakeTeamsDevice(now = { testScheduler.currentTime }).apply { launchLoading = "list_class_forthcoming" to 3_000L }
+        assertEquals(10, machine(resumed).run(emptyList()).size)
+
+        // Should the link never land, nothing is read from it.
+        val stuck = FakeTeamsDevice().apply { launchLoading = "list_class_forthcoming" to Long.MAX_VALUE / 2 }
+        val abort = assertFailsWith<SyncAbort> { machine(stuck).run(emptyList()) }
+        assertEquals("Couldn't open Teams Assignments", abort.reason)
+
+        // Codex review: nor while its toolbar isn't drawn, when it could be either list.
+        val untitled = FakeTeamsDevice().apply { launchLoading = "list_class_forthcoming_untitled" to Long.MAX_VALUE / 2 }
+        assertEquals("Couldn't open Teams Assignments", assertFailsWith<SyncAbort> { machine(untitled).run(emptyList()) }.reason)
     }
 
     @Test
     fun `a changed row that fails to open is retried on the next sync`() = runTest {
         // Codex review: keeping the old read time made the changed row look fresh for days.
         val first = machine(FakeTeamsDevice()).run(emptyList())
-        val changed = first.map { if (it.key == worksheet) it.copy(dueAt = 0) else it }
+        val changed = first.map { if (it.key == worksheet) it.copy(listDueAt = 0) else it }
 
         val failing = FakeTeamsDevice().apply {
             tapsOpenCards = false
@@ -458,14 +503,18 @@ class SyncStateMachineTest {
         now = { testScheduler.currentTime },
     )
 
-    /** That list's cards, as saved by an earlier sync with fresh details, so only the lists are read. */
+    /**
+     * That list's cards, as saved by an earlier sync with fresh details, so only the lists are read.
+     * Read as Past due's, as a sync reads them: captured on 8 Oct, on this 28 Sept clock their dates
+     * fall in the year before.
+     */
     private fun loadMoreSaved(): List<Assignment> =
         TeamsScreens.cards(Fixtures.load("list_past_due_load_more")).map { card ->
             Assignment(
                 key = card.id,
                 title = card.title,
                 className = card.className,
-                dueAt = parser.parseList(card.headerDate, card.headerLabel, card.dueLine)?.toEpochMilli(),
+                dueAt = parser.parseList(card.headerDate, card.headerLabel, card.dueLine, AssignmentTab.PastDue)?.toEpochMilli(),
                 tab = AssignmentTab.PastDue,
                 detailReadAt = clock.millis(),
             )

@@ -1,5 +1,6 @@
 package com.teamsassignments.widget.automation
 
+import com.teamsassignments.widget.automation.TeamsScreens.ListScope
 import com.teamsassignments.widget.automation.TeamsScreens.normalizedTitle
 import com.teamsassignments.widget.automation.TeamsSelectors.Tab
 import com.teamsassignments.widget.automation.TeamsSelectors.toAssignmentTab
@@ -24,7 +25,15 @@ import kotlin.math.abs
  *   it if it is open work the list hasn't shown yet;
  * - whatever Teams shows as handed in (a card on Completed, a handed-in detail screen) is removed;
  * - so is whatever is on neither Forthcoming nor Past due, once both have been seen in full, close
- *   together (see [OpenLists]): taken as handed in.
+ *   together (see [OpenLists]): taken as handed in. Forthcoming seen in full is enough on its own
+ *   for work due later than that, which nothing but a hand-in (or the teacher) takes off it.
+ *   Past due counts only once it has been seen in full itself: nothing on another tab stands
+ *   for it.
+ *
+ * A class team's own Assignments tab holds that class's work alone ([ListScope]), so it only
+ * ever counts for that class. Its Past due reaches further back than the app's own list, which a
+ * sync reads, so it only updates work already saved: work only it showed would come and go. A
+ * list narrowed by Filter or a search adds and updates as any other, but never counts as whole.
  *
  * Nor is anything just handed in added back from a list, which Teams may not have refreshed since.
  * Its own screen showing it as not handed in is another matter: the hand-in has been undone, and
@@ -36,9 +45,15 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
     sealed interface Sighting {
         /**
          * A list tab's cards, without their positions: scrolling doesn't change what's there.
-         * [openLists] is set when this sighting completes a view of both open tabs in full.
+         * [scope] says whose work it holds. [openLists] is set when this sighting completes a
+         * view of the open tabs in full.
          */
-        data class OnList(val tab: Tab, val cards: List<ListCard>, val openLists: OpenLists? = null) : Sighting
+        data class OnList(
+            val tab: Tab,
+            val cards: List<ListCard>,
+            val scope: ListScope = ListScope(className = null, narrowed = false),
+            val openLists: OpenLists? = null,
+        ) : Sighting
 
         /** A detail screen, and whether its toolbar title is the class name ([TeamsScreens.classInToolbar]). */
         data class OnDetail(val detail: DetailScreen, val classInToolbar: Boolean) : Sighting
@@ -46,32 +61,55 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
 
     /**
      * Every card on Forthcoming and Past due, each list seen in full once it had loaded, the two
-     * within [AutomationConfig.bothTabsWithinMs] of each other. Work falling due between
-     * [movedFrom] and [movedTo] (epoch milliseconds) may have moved from one to the other
-     * meanwhile, so it doesn't count as missing.
+     * within [AutomationConfig.bothTabsWithinMs] of each other; or Forthcoming's alone, where
+     * [dueAfter] is set. Work falling due between [movedFrom] and [movedTo] (epoch milliseconds)
+     * may have moved from one to the other meanwhile, so it doesn't count as missing; with
+     * Forthcoming alone, only work due after [dueAfter] can, since Past due may hold the rest.
+     * [className] is the class whose own lists these are, or null for every class's. Work seen
+     * open since [since], when the earlier of the views was taken, isn't missing from it: work
+     * changed since (its [Assignment.lastSyncedAt]), and [seenOpen], unchanged but seen.
      */
-    data class OpenLists(val ids: Set<String>, val movedFrom: Long, val movedTo: Long)
+    data class OpenLists(
+        val ids: Set<String>,
+        val movedFrom: Long,
+        val movedTo: Long,
+        val since: Long,
+        val className: String? = null,
+        val dueAfter: Long? = null,
+        val seenOpen: Set<String> = emptySet(),
+    ) {
+        /** Whether open work due at [dueAt] would have to be on these lists. */
+        fun wouldList(dueAt: Long?): Boolean = when (dueAfter) {
+            null -> dueAt?.let { it in movedFrom..movedTo } != true
+            else -> dueAt != null && dueAt > dueAfter
+        }
+    }
 
     /**
      * What [merge] made of a sighting: the new list, a line per change for the log, the keys Teams
-     * showed as handed in (whether or not they were still listed, less those already remembered),
-     * and those it took as handed in for being on neither open list. Only the former are
-     * remembered as handed in: were the latter wrong, the next look at the list that does show
-     * them would bring them back. Work put back on the list, its hand-in undone, needs no
-     * reporting: the store forgets a hand-in once its work is listed again.
+     * showed as handed in (less those already remembered), and those it took as handed in for
+     * being on neither open list. Only the former are remembered as handed in: were the latter
+     * wrong, the next look at the list that does show them would bring them back. Work put back on
+     * the list, its hand-in undone, needs no reporting: the store forgets a hand-in once its work
+     * is listed again. [listsSeenAt] is set when both open lists, every class's, were seen in full.
+     * [seenOpen] holds the saved work a detail screen showed open, changed or not, for [sawOpen].
+     * [notes] are lines for the log about what was seen but left alone, and why: no change.
      */
     data class Merged(
         val assignments: List<Assignment>,
         val changes: List<String>,
         val handedIn: List<String> = emptyList(),
         val presumed: List<String> = emptyList(),
+        val listsSeenAt: Long? = null,
+        val seenOpen: List<String> = emptyList(),
+        val notes: List<String> = emptyList(),
     )
 
     /** One open tab seen in full: every card on it, whether any showed as handed in, and when. */
     private data class FullView(val ids: Set<String>, val anyHandedIn: Boolean, val at: Long)
 
     /** A list the tree doesn't hold whole, as the user scrolls through it one settled view at a time. */
-    private class Coverage(val tab: Tab) {
+    private class Coverage(val tab: Tab, val className: String?) {
         val ids = mutableSetOf<String>()
         var anyHandedIn = false
         var lastIds = emptySet<String>()
@@ -93,8 +131,17 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
     private var changedSinceSwitch = true
 
     private var coverage: Coverage? = null
-    private val fullViews = mutableMapOf<Tab, FullView>()
-    private var completedIds = emptySet<String>()
+
+    /** Each open tab seen in full, by the class whose own tab it is (null for every class's). */
+    private val fullViews = mutableMapOf<Pair<String?, Tab>, FullView>()
+    private val completedIds = mutableMapOf<String?, Set<String>>()
+
+    /**
+     * When each assignment was last seen open, on any list or its own screen, by key. Kept here
+     * beside [fullViews], which it's weighed against, rather than saved: a sighting that changes
+     * nothing saves nothing, so the provider's apps aren't told of every look at Teams.
+     */
+    private val seenOpenAt = mutableMapOf<String, Long>()
 
     /** Whether the last [look] found a screen that hasn't held still for long enough yet. */
     var settling = false
@@ -110,8 +157,14 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         changedSinceSwitch = true
         coverage = null
         fullViews.clear()
-        completedIds = emptySet()
+        completedIds.clear()
+        seenOpenAt.clear()
         settling = false
+    }
+
+    /** Notes [keys] seen open at [wallClock], from a sighting [merge] matched ([Merged.seenOpen]). */
+    fun sawOpen(keys: Collection<String>, wallClock: Long) {
+        keys.forEach { seenOpenAt[it] = wallClock }
     }
 
     /**
@@ -134,7 +187,9 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             return seen
         }
         val tab = TeamsScreens.selectedTab(root)?.takeIf { TeamsScreens.isList(root) }
-        if (tab == null) {
+        // Nor is a list whose toolbar isn't drawn yet: it can't say whose work it holds, the app's
+        // own or one class team's, whose Past due reaches back further (Codex review).
+        if (tab == null || TeamsScreens.toolbarTitle(root).isEmpty()) {
             candidate = null
             return null
         }
@@ -145,15 +200,17 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         // The sync's test for a loading list: an indicator on screen. A "load more" placeholder off
         // screen only means the list may not be whole yet, which fullView allows for.
         val loading = TeamsScreens.isLoading(root)
-        val seen = Sighting.OnList(tab, TeamsScreens.cards(root).map { it.copy(bounds = IntRect.EMPTY) })
+        val scope = TeamsScreens.listScope(root)
+        val seen = Sighting.OnList(tab, TeamsScreens.cards(root).map { it.copy(bounds = IntRect.EMPTY) }, scope)
         noteSwitch(seen, loading)
         if (loading) {
             candidate = null
             return null
         }
+        val inScope = saved.filter { scope.className == null || it.className == scope.className }
         val hold = when {
             seen.cards.isNotEmpty() -> config.settleMs
-            tab != Tab.Completed && saved.any { it.tab == tab.toAssignmentTab() } -> config.suspectEmptySettleMs
+            tab != Tab.Completed && inScope.any { it.tab == tab.toAssignmentTab() } -> config.suspectEmptySettleMs
             else -> config.emptySettleMs
         }
         // Until the list has changed since its tab was selected, the rows may be the last tab's.
@@ -161,18 +218,33 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         // placeholder a moment before the cards it fetched arrive. Once it has held, a list
         // becoming whole is news even with the same cards.
         val whole = TeamsScreens.wholeListInTree(root)
-        if (!heldStill(seen, now, hold, whole) || !changedSinceSwitch || (seen == lastUsed && whole == lastUsedWhole)) return null
+        if (!heldStill(seen, now, hold, whole) || !changedSinceSwitch) return null
+        if (tab != Tab.Completed) sawOpen(seen.cards.filterNot { it.isHandedIn }.map { it.id }, wallClock)
+        if (seen == lastUsed && whole == lastUsedWhole) {
+            // Nothing new, but what was seen in full still is: the ten minutes run from now.
+            if (whole && !scope.narrowed) fullViews[scope.className to tab]?.let { fullViews[scope.className to tab] = it.copy(at = wallClock) }
+            return null
+        }
         lastUsed = seen
         lastUsedWhole = whole
-        val openLists = if (tab == Tab.Completed) {
-            completedIds = seen.cards.map { it.id }.toSet()
-            null
-        } else {
-            // A tab seen in part now, its "load more" placeholder waiting say, may hold more than an
-            // earlier view of it in full did: that view no longer stands for it.
-            val view = fullView(root, seen, wallClock)
-            if (view != null) fullViews[tab] = view else fullViews.remove(tab)
-            bothInFull()
+        val openLists = when {
+            tab == Tab.Completed -> {
+                completedIds[scope.className] = seen.cards.map { it.id }.toSet()
+                null
+            }
+            // Less than the tab holds: no view of it in full, now or by scrolling through.
+            scope.narrowed -> {
+                coverage = null
+                null
+            }
+            else -> {
+                // A tab seen in part now, its "load more" placeholder waiting say, may hold more than
+                // an earlier view of it in full did: that view no longer stands for it.
+                val view = fullView(root, seen, wallClock)
+                val key = scope.className to tab
+                if (view != null) fullViews[key] = view else fullViews.remove(key)
+                openLists(scope.className, wallClock)
+            }
         }
         return seen.copy(openLists = openLists)
     }
@@ -204,11 +276,13 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
      * The sync's rule for a newly selected tab: Teams can mark a tab selected before it replaces
      * the previous tab's rows, so the rows that showed when it was selected don't count as its own
      * until the list has visibly changed at least once (to other rows, to empty, or to a loading
-     * indicator). See [TeamsAutomation.awaitSettledList].
+     * indicator). See [TeamsAutomation.awaitSettledList]. Another class's list, or every class's
+     * after one class's, is a switch too.
      */
     private fun noteSwitch(seen: Sighting.OnList, loading: Boolean) {
-        if (lastSeenList?.tab != seen.tab) {
-            rowsAtSwitch = lastSeenList?.cards
+        val last = lastSeenList
+        if (last?.tab != seen.tab || last.scope.className != seen.scope.className) {
+            rowsAtSwitch = last?.cards
             changedSinceSwitch = rowsAtSwitch.isNullOrEmpty()
             coverage = null
         }
@@ -228,10 +302,11 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             coverage = null
             return FullView(ids, anyHandedIn, wallClock)
         }
-        var covered = coverage?.takeIf { it.tab == seen.tab } ?: Coverage(seen.tab)
+        val className = seen.scope.className
+        var covered = coverage?.takeIf { it.tab == seen.tab && it.className == className } ?: Coverage(seen.tab, className)
         if (ids.isNotEmpty() && covered.lastIds.isNotEmpty() && ids.none(covered.lastIds::contains)) {
             // A gap between this view and the last: start again from here.
-            covered = Coverage(seen.tab)
+            covered = Coverage(seen.tab, className)
         }
         coverage = covered
         covered.ids += ids
@@ -246,23 +321,44 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
     }
 
     /**
-     * Both open tabs seen in full, close enough together, and each plainly its own list. A newly
-     * selected tab can show the rows of the one before it: the other open tab's, or Completed's
-     * (which show as handed in). Either would make work that is there look missing.
+     * [className]'s open tabs (every class's for null) seen in full: both, close enough together,
+     * or Forthcoming lately on its own. Each must be plainly its own list. A newly selected tab
+     * can show the rows of the one before it: the other open tab's, or Completed's (which show as
+     * handed in). Either would make work that is there look missing.
      */
-    private fun bothInFull(): OpenLists? {
-        val forthcoming = fullViews[Tab.Forthcoming] ?: return null
-        val pastDue = fullViews[Tab.PastDue] ?: return null
-        if (abs(forthcoming.at - pastDue.at) > config.bothTabsWithinMs) return null
-        val views = listOf(forthcoming, pastDue)
-        if (views.any { it.anyHandedIn || (it.ids.isNotEmpty() && it.ids == completedIds) }) return null
+    private fun openLists(className: String?, wallClock: Long): OpenLists? {
+        val forthcoming = fullViews[className to Tab.Forthcoming] ?: return null
+        val pastDue = fullViews[className to Tab.PastDue]?.takeIf { abs(forthcoming.at - it.at) <= config.bothTabsWithinMs }
+        val views = listOfNotNull(forthcoming, pastDue)
+        val completed = completedIds[className]
+        if (views.any { it.anyHandedIn || (it.ids.isNotEmpty() && it.ids == completed) }) return null
+        if (pastDue == null) {
+            if (wallClock - forthcoming.at > config.bothTabsWithinMs) return null
+            // Work due later than this can't have moved to Past due since Forthcoming was seen.
+            val after = forthcoming.at + config.movedTabsAfterMs
+            return OpenLists(
+                ids = forthcoming.ids,
+                movedFrom = forthcoming.at - config.movedTabsBeforeMs,
+                movedTo = after,
+                since = forthcoming.at,
+                className = className,
+                dueAfter = after,
+                seenOpen = seenOpenSince(forthcoming.at),
+            )
+        }
         if (forthcoming.ids.isNotEmpty() && forthcoming.ids == pastDue.ids) return null
+        val since = minOf(forthcoming.at, pastDue.at)
         return OpenLists(
             ids = forthcoming.ids + pastDue.ids,
-            movedFrom = minOf(forthcoming.at, pastDue.at) - config.movedTabsBeforeMs,
+            movedFrom = since - config.movedTabsBeforeMs,
             movedTo = maxOf(forthcoming.at, pastDue.at) + config.movedTabsAfterMs,
+            since = since,
+            className = className,
+            seenOpen = seenOpenSince(since),
         )
     }
+
+    private fun seenOpenSince(at: Long): Set<String> = seenOpenAt.filterValues { it > at }.keys.toSet()
 
     companion object {
         /**
@@ -291,19 +387,26 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         ): Merged {
             // Work handed in before the list had shown it is remembered without its Teams id.
             val handedInUnkeyed = recentlyHandedIn.values.filterNotNull().filterNot { TeamsSelectors.CARD_ID.matches(it.key) }
+            val ofClass = sighting.scope.className
             val out = saved.toMutableList()
             val changes = mutableListOf<String>()
             val handedIn = mutableListOf<String>()
-            for (card in sighting.cards) {
+            for (shown in sighting.cards) {
+                // A class team's own tab leaves the class off its cards: its toolbar names it.
+                val card = if (ofClass != null) shown.copy(className = ofClass) else shown
                 val index = out.indexOfFirst { it.key == card.id }
                 // Completed holds work handed in, or closed. A card there still showing a due line
                 // is an open tab's, not yet replaced after a tab switch, and proves nothing.
                 val completed = sighting.tab == Tab.Completed && !TeamsSelectors.CARD_DUE_LINE.containsMatchIn(card.dueLine)
                 if (card.isHandedIn || completed) {
-                    // Remembered even when it's no longer listed (taken as handed in, say), so a list
-                    // Teams hasn't refreshed can't add it back.
-                    if (card.id !in recentlyHandedIn) handedIn += card.id
+                    // Remembered, so a list Teams hasn't refreshed can't add it back. Only work that
+                    // was on the list, though: Completed holds weeks of work, some of which can come
+                    // back (returned for revision, reopened), and the rest needs keeping off nothing.
+                    // Work already taken off for being on neither open list isn't remembered either:
+                    // that came from lists that no longer showed it, and Teams doesn't go back to
+                    // older lists than those, so none should add it back (Claude review).
                     if (index >= 0) {
+                        if (card.id !in recentlyHandedIn) handedIn += card.id
                         changes += if (card.isHandedIn) "\"${out[index].title}\" handed in" else "\"${out[index].title}\" is on Completed"
                         out.removeAt(index)
                     }
@@ -311,7 +414,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 }
                 if (sighting.tab == Tab.Completed) continue
 
-                val dueAt = parser.parseList(card.headerDate, card.headerLabel, card.dueLine)?.toEpochMilli()
+                val dueAt = parser.parseList(card.headerDate, card.headerLabel, card.dueLine, sighting.tab.toAssignmentTab())?.toEpochMilli()
                 // Teams lists work that fell due earlier today on both tabs; it belongs under Past due.
                 val tab = if (sighting.tab == Tab.PastDue || (dueAt != null && dueAt <= wallClock)) {
                     AssignmentTab.PastDue
@@ -323,7 +426,8 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                     val updated = updated(old, card, dueAt, tab)
                     if (updated != old) {
                         out[index] = updated.copy(lastSyncedAt = wallClock)
-                        changes += "updated \"${updated.title}\""
+                        // The list's due time noted for the first time is no change worth a line.
+                        if (updated.copy(listDueAt = old.listDueAt) != old) changes += "updated \"${updated.title}\""
                     }
                     continue
                 }
@@ -334,6 +438,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 // without its Teams id, it is told by its title, class and due time instead.
                 val handedInLately = card.id in recentlyHandedIn || handedInUnkeyed.any { sameWork(it, card, dueAt) }
                 if (handedInLately && unkeyed < 0) continue
+                if (unkeyed < 0 && ofClass != null && sighting.tab == Tab.PastDue) continue
 
                 val added = Assignment(
                     key = card.id,
@@ -341,12 +446,15 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                     className = card.className,
                     dueText = listDueText(card),
                     dueAt = dueAt,
+                    listDueAt = dueAt,
                     tab = tab,
                     lastSyncedAt = wallClock,
                 )
                 if (unkeyed >= 0) {
                     val earlier = out[unkeyed]
                     out[unkeyed] = added.copy(
+                        // Its own screen's: a collapsed card's title can be cut short.
+                        title = earlier.title,
                         className = earlier.className.ifEmpty { added.className },
                         description = earlier.description,
                         attachments = earlier.attachments,
@@ -354,16 +462,21 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                         dueText = earlier.dueText,
                         detailReadAt = earlier.detailReadAt,
                     )
+                    changes += "\"${earlier.title}\" took its Teams id"
                 } else {
                     out += added
+                    changes += "added \"${card.title}\""
                 }
-                changes += "added \"${card.title}\""
             }
             val presumed = mutableListOf<String>()
             sighting.openLists?.let { lists ->
                 out.removeAll { assignment ->
                     val missing = TeamsSelectors.CARD_ID.matches(assignment.key) && assignment.key !in lists.ids &&
-                        assignment.dueAt?.let { it in lists.movedFrom..lists.movedTo } != true
+                        (lists.className == null || assignment.className == lists.className) &&
+                        // Seen open after the earlier view was taken (its hand-in undone, say, or
+                        // on its own screen): that view can't speak for it.
+                        assignment.lastSyncedAt <= lists.since && assignment.key !in lists.seenOpen &&
+                        lists.wouldList(assignment.dueAt)
                     if (missing) {
                         changes += "\"${assignment.title}\" is on neither Forthcoming nor Past due: taken as handed in"
                         presumed += assignment.key
@@ -371,17 +484,21 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                     missing
                 }
             }
-            return Merged(out, changes, handedIn, presumed)
+            val listsSeenAt = sighting.openLists?.takeIf { it.className == null && it.dueAfter == null }?.let { wallClock }
+            return Merged(out, changes, handedIn, presumed, listsSeenAt)
         }
 
         /**
          * [old] as [card] shows it now. A changed title or due time makes the saved details
-         * suspect, so the next sync reads them again, as it would for any changed row.
+         * suspect, so the next sync reads them again, as it would for any changed row. The due
+         * time is told changed list against list ([Assignment.listDueAt]): the detail screen's,
+         * where read, stands until the list shows another.
          */
         private fun updated(old: Assignment, card: ListCard, dueAt: Long?, tab: AssignmentTab): Assignment {
             // A collapsed card's title is cut out of its text; the saved one stands while it fits.
             val title = if (card.collapsed && TeamsScreens.sameTitle(card.title, old.title)) old.title else card.title
-            val changed = title != old.title || (dueAt != null && dueAt != old.dueAt)
+            val moved = dueAt != null && dueAt != (old.listDueAt ?: old.dueAt)
+            val changed = title != old.title || moved
             return old.copy(
                 title = title,
                 // The detail toolbar's class is authoritative, and a collapsed card's may include a tag.
@@ -391,7 +508,8 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                     else -> card.className
                 },
                 dueText = if (changed) listDueText(card) else old.dueText,
-                dueAt = dueAt ?: old.dueAt,
+                dueAt = if (moved) dueAt else old.dueAt ?: dueAt,
+                listDueAt = dueAt ?: old.listDueAt,
                 tab = tab,
                 detailReadAt = if (changed) null else old.detailReadAt,
             )
@@ -417,7 +535,16 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             val candidates = sameTitle
                 .filter { className == null || it.className.isEmpty() || classMatches(it.className, className) }
                 .filter { dueAt == null || it.dueAt == null || it.dueAt == dueAt }
-            val match = candidates.singleOrNull()
+            // A row saved from a collapsed card may hold its title cut short: it counts only with
+            // its class and due time both known and agreeing, and then takes the screen's title.
+            // Another row of the full title is no bar unless it could be this one: last week's,
+            // due at another time, can't.
+            val cutShort = if (candidates.isEmpty() && className != null && dueAt != null) {
+                saved.filter { TeamsScreens.sameTitle(it.title, title) && it.className == className && it.dueAt == dueAt }
+            } else {
+                emptyList()
+            }
+            val match = candidates.singleOrNull() ?: cutShort.singleOrNull()
 
             if (match == null) {
                 val open = detail.status?.let(TeamsSelectors.DETAIL_NOT_HANDED_IN_STATUS::matches) == true
@@ -451,9 +578,12 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 }
                 // Open work the list hasn't shown yet, say from a Teams notification: add it once
                 // there's enough to show, and let the list swap in its GUID when it's seen there. Not
-                // while a same-titled row could be this class's (another week's, or one of unknown
-                // class): that is left to the list, where cards have GUIDs.
-                if (sameTitle.any { it.className.isEmpty() || classMatches(it.className, className) }) return unchanged
+                // while a same-titled row could be this class's (another week's, one of unknown
+                // class, or one whose title a collapsed card cut short): that is left to the list,
+                // where cards have GUIDs.
+                if (saved.any { TeamsScreens.sameTitle(it.title, title) && (it.className.isEmpty() || classMayMatch(it.className, className)) }) {
+                    return unchanged
+                }
                 val added = Assignment(
                     key = Assignment.fallbackKey(className, title),
                     title = title,
@@ -472,6 +602,12 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
 
             val index = saved.indexOf(match)
             if (detail.isHandedIn) {
+                // Taking work off the list needs more than reading it does: with no due time to
+                // tell them apart, last week's work handed in would take this week's, of the same
+                // title and class, off the list for 12 hours. Completed's cards have GUIDs.
+                if (dueAt == null || match.dueAt != dueAt) {
+                    return unchanged.copy(notes = listOf("\"$title\" shows as handed in, with no due time to tell it by: left to Completed or a sync"))
+                }
                 return Merged(saved.filterIndexed { i, _ -> i != index }, listOf("\"${match.title}\" handed in"), listOf(match.key))
             }
             val updated = match.copy(
@@ -489,11 +625,11 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 },
                 detailReadAt = match.detailReadAt,
             )
-            // Read before and unchanged since: nothing worth saving.
-            if (updated == match && match.detailReadAt != null) return unchanged
+            // Read before and unchanged since: nothing worth saving, but it was seen open now.
+            if (updated == match && match.detailReadAt != null) return unchanged.copy(seenOpen = listOf(match.key))
             val out = saved.toMutableList()
             out[index] = updated.copy(detailReadAt = wallClock, lastSyncedAt = wallClock)
-            return Merged(out, listOf("read \"$title\""))
+            return Merged(out, listOf("read \"$title\""), seenOpen = listOf(match.key))
         }
 
         /** Whether [saved], kept without a GUID, is the assignment on [card]: same title, class and due time. */
@@ -506,14 +642,25 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
          * Whether [card] shows [work], handed in lately and remembered without a GUID. Unlike
          * [sameRow], a collapsed card's class counts here: another class can set work of the same
          * title for the same time, and passing its card by would keep it off the list. Only a class
-         * left unknown, on either side, stands for any.
+         * left unknown, on either side, stands for any; a collapsed card's may also have a tag in
+         * front of it.
          */
         private fun sameWork(work: Assignment, card: ListCard, dueAt: Long?): Boolean =
             TeamsScreens.sameTitle(card.title, work.title) && dueAt != null && dueAt == work.dueAt &&
-                (work.className.isEmpty() || card.className.isEmpty() || classMatches(work.className, card.className))
+                (
+                    work.className.isEmpty() || card.className.isEmpty() || classMatches(work.className, card.className) ||
+                        (card.collapsed && classMayMatch(work.className, card.className))
+                    )
 
-        /** Class names as the toolbar and a card show them; a collapsed card's may start with its tag. */
-        private fun classMatches(a: String, b: String): Boolean = a == b || a.endsWith(" $b") || b.endsWith(" $a")
+        /** The same class, by name. "Further Maths" is not "Maths". */
+        private fun classMatches(a: String, b: String): Boolean = a == b
+
+        /**
+         * Whether two class names could be the same class: the same, or one ending in the other, as
+         * a collapsed card's does with a tag in front (`Challenge 12.2-PH3`), and as a row saved
+         * from one before 0.5.0 may still. Only for holding back, never for picking a row to change.
+         */
+        private fun classMayMatch(a: String, b: String): Boolean = a == b || a.endsWith(" $b") || b.endsWith(" $a")
 
         /** The due text a sync saves for a card whose detail screen it didn't read. */
         private fun listDueText(card: ListCard): String = listOfNotNull(card.headerDate, card.dueLine).joinToString(" · ")
