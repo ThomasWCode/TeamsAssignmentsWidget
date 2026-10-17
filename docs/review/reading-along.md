@@ -15,7 +15,7 @@ The findings and improvements below are as first written. Everything was then fi
 | 5 | A cut-short collapsed title leaving a duplicate | | The row keeps its title when the card gives it its id; the detail screen matches a cut-short title with class and due time agreeing, and won't add beside one |
 | 6 | The watch loop copying Teams every 0.7 s while copies failed | | `LookPacer` owns "settling": only a look that read the screen says so, so the 5-failure cap holds |
 | 7 | An empty open tab never counting as seen in full | Confirmed: an empty tab has no list, only `No … assignments right now.` | Whole when the selected tab's words show, with no list and nothing loading. `list_past_due_empty` re-derived in that shape |
-| 8 | A stale list taking an undone hand-in away again | | Work seen open after the earlier view (`lastSyncedAt`) is left alone |
+| 8 | A stale list taking an undone hand-in away again | | Work seen open after the earlier view is left alone: changed since (`lastSyncedAt`), or seen unchanged on any list or its own screen, which the observer notes in memory rather than saves, so the provider's apps aren't told of every look |
 | 9 | Suffix class matching; a refused sighting spent; the 10-minute window; "added" for a key swap | `12.2-PH3` and `Physics Skills & Stretch 12.2-PH3` are both real teams | Exact class matching (a collapsed card with a tag leaves its class unknown); no look while a sync's status stands; an unchanged look refreshes a view's time; "took its Teams id" |
 
 | | Improvement | 0.5.0 |

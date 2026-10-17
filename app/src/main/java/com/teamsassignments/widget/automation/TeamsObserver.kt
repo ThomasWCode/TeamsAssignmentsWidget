@@ -68,7 +68,8 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
      * may have moved from one to the other meanwhile, so it doesn't count as missing; with
      * Forthcoming alone, only work due after [dueAfter] can, since Past due may hold the rest.
      * [className] is the class whose own lists these are, or null for every class's. Work seen
-     * open since [since], when the earlier of the views was taken, isn't missing from it.
+     * open since [since], when the earlier of the views was taken, isn't missing from it: work
+     * changed since (its [Assignment.lastSyncedAt]), and [seenOpen], unchanged but seen.
      */
     data class OpenLists(
         val ids: Set<String>,
@@ -77,6 +78,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         val since: Long,
         val className: String? = null,
         val dueAfter: Long? = null,
+        val seenOpen: Set<String> = emptySet(),
     ) {
         /** Whether open work due at [dueAt] would have to be on these lists. */
         fun wouldList(dueAt: Long?): Boolean = when (dueAfter) {
@@ -92,6 +94,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
      * wrong, the next look at the list that does show them would bring them back. Work put back on
      * the list, its hand-in undone, needs no reporting: the store forgets a hand-in once its work
      * is listed again. [listsSeenAt] is set when both open lists, every class's, were seen in full.
+     * [seenOpen] holds the saved work a detail screen showed open, changed or not, for [sawOpen].
      */
     data class Merged(
         val assignments: List<Assignment>,
@@ -99,6 +102,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         val handedIn: List<String> = emptyList(),
         val presumed: List<String> = emptyList(),
         val listsSeenAt: Long? = null,
+        val seenOpen: List<String> = emptyList(),
     )
 
     /** One open tab seen in full: every card on it, whether any showed as handed in, and when. */
@@ -132,6 +136,13 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
     private val fullViews = mutableMapOf<Pair<String?, Tab>, FullView>()
     private val completedIds = mutableMapOf<String?, Set<String>>()
 
+    /**
+     * When each assignment was last seen open, on any list or its own screen, by key. Kept here
+     * beside [fullViews], which it's weighed against, rather than saved: a sighting that changes
+     * nothing saves nothing, so the provider's apps aren't told of every look at Teams.
+     */
+    private val seenOpenAt = mutableMapOf<String, Long>()
+
     /** Whether the last [look] found a screen that hasn't held still for long enough yet. */
     var settling = false
         private set
@@ -147,7 +158,13 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         coverage = null
         fullViews.clear()
         completedIds.clear()
+        seenOpenAt.clear()
         settling = false
+    }
+
+    /** Notes [keys] seen open at [wallClock], from a sighting [merge] matched ([Merged.seenOpen]). */
+    fun sawOpen(keys: Collection<String>, wallClock: Long) {
+        keys.forEach { seenOpenAt[it] = wallClock }
     }
 
     /**
@@ -209,6 +226,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         // becoming whole is news even with the same cards.
         val whole = TeamsScreens.wholeListInTree(root)
         if (!heldStill(seen, now, hold, whole) || !changedSinceSwitch) return null
+        if (tab != Tab.Completed) sawOpen(seen.cards.filterNot { it.isHandedIn }.map { it.id }, wallClock)
         if (seen == lastUsed && whole == lastUsedWhole) {
             // Nothing new, but what was seen in full still is: the ten minutes run from now.
             if (whole && !scope.narrowed) fullViews[scope.className to tab]?.let { fullViews[scope.className to tab] = it.copy(at = wallClock) }
@@ -348,17 +366,22 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 since = forthcoming.at,
                 className = className,
                 dueAfter = after,
+                seenOpen = seenOpenSince(forthcoming.at),
             )
         }
         if (forthcoming.ids.isNotEmpty() && forthcoming.ids == pastDue.ids) return null
+        val since = minOf(forthcoming.at, pastDue.at)
         return OpenLists(
             ids = forthcoming.ids + pastDue.ids,
-            movedFrom = minOf(forthcoming.at, pastDue.at) - config.movedTabsBeforeMs,
+            movedFrom = since - config.movedTabsBeforeMs,
             movedTo = maxOf(forthcoming.at, pastDue.at) + config.movedTabsAfterMs,
-            since = minOf(forthcoming.at, pastDue.at),
+            since = since,
             className = className,
+            seenOpen = seenOpenSince(since),
         )
     }
+
+    private fun seenOpenSince(at: Long): Set<String> = seenOpenAt.filterValues { it > at }.keys.toSet()
 
     companion object {
         /**
@@ -421,11 +444,11 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 if (index >= 0) {
                     val old = out[index]
                     val updated = updated(old, card, dueAt, tab)
-                    // Seen open now, changed or not, on whatever list: a view in full taken before
-                    // this can't speak for it (see OpenLists.since).
-                    out[index] = updated.copy(lastSyncedAt = wallClock)
-                    // The list's due time noted for the first time is no change worth a line.
-                    if (updated.copy(listDueAt = old.listDueAt) != old) changes += "updated \"${updated.title}\""
+                    if (updated != old) {
+                        out[index] = updated.copy(lastSyncedAt = wallClock)
+                        // The list's due time noted for the first time is no change worth a line.
+                        if (updated.copy(listDueAt = old.listDueAt) != old) changes += "updated \"${updated.title}\""
+                    }
                     continue
                 }
                 // A detail screen seen on its own may have saved it already, without its GUID.
@@ -470,9 +493,9 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 out.removeAll { assignment ->
                     val missing = TeamsSelectors.CARD_ID.matches(assignment.key) && assignment.key !in lists.ids &&
                         (lists.className == null || assignment.className == lists.className) &&
-                        // Seen open after the earlier view was taken (its hand-in undone, say): that
-                        // view can't speak for it.
-                        assignment.lastSyncedAt <= lists.since &&
+                        // Seen open after the earlier view was taken (its hand-in undone, say, or
+                        // on its own screen): that view can't speak for it.
+                        assignment.lastSyncedAt <= lists.since && assignment.key !in lists.seenOpen &&
                         lists.wouldList(assignment.dueAt)
                     if (missing) {
                         changes += "\"${assignment.title}\" is on neither Forthcoming nor Past due: taken as handed in"
@@ -620,14 +643,11 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 },
                 detailReadAt = match.detailReadAt,
             )
+            // Read before and unchanged since: nothing worth saving, but it was seen open now.
+            if (updated == match && match.detailReadAt != null) return unchanged.copy(seenOpen = listOf(match.key))
             val out = saved.toMutableList()
-            // Read before and unchanged since: nothing worth a line, but it was seen open now.
-            if (updated == match && match.detailReadAt != null) {
-                out[index] = match.copy(lastSyncedAt = wallClock)
-                return Merged(out, emptyList())
-            }
             out[index] = updated.copy(detailReadAt = wallClock, lastSyncedAt = wallClock)
-            return Merged(out, listOf("read \"$title\""))
+            return Merged(out, listOf("read \"$title\""), seenOpen = listOf(match.key))
         }
 
         /** Whether [saved], kept without a GUID, is the assignment on [card]: same title, class and due time. */
