@@ -35,7 +35,7 @@ When you open Assignments in Teams yourself, the app reads what's on screen, wit
 - changed titles and due times are updated;
 - opening an assignment saves its instructions, and adds it if the list hadn't shown it yet (say you came from a Teams notification);
 - anything Teams shows as done is removed: everything on the Completed list, and an assignment whose own screen says it's handed in;
-- an assignment on **neither** Forthcoming nor Past due is taken as handed in, once you've seen both lists in full, within ten minutes of each other. Forthcoming has a red dot by *Past due* while Past due holds work; without it, Past due counts as seen, and empty;
+- an assignment on **neither** Forthcoming nor Past due is taken as handed in, once you've seen both lists in full, within ten minutes of each other;
 - an assignment due later than now that isn't on Forthcoming, once you've seen Forthcoming in full, is taken as handed in too: only a hand-in (or the teacher) takes such work off it. So work handed in on a laptop goes from the widget the next time you open Assignments on the phone;
 - a class team's own **Assignments** tab (Teams → the class → Assignments) counts for that class alone. Its Past due goes back further than the app's own list, which a sync reads, so it only updates work the widget already has;
 - a list narrowed by **Filter** (to some classes) or a search adds and updates as any other, but never counts as seen in full. A sync, row tap or hand-in stops on one, and says to clear the filter.

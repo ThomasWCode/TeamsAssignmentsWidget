@@ -25,10 +25,10 @@ import kotlin.math.abs
  *   it if it is open work the list hasn't shown yet;
  * - whatever Teams shows as handed in (a card on Completed, a handed-in detail screen) is removed;
  * - so is whatever is on neither Forthcoming nor Past due, once both have been seen in full, close
- *   together (see [OpenLists]): taken as handed in. Past due counts as seen in full, and empty,
- *   while another tab shows it without its mark ([TeamsScreens.pastDueMarked]). Forthcoming seen
- *   in full is enough on its own for work due later than that, which nothing but a hand-in (or
- *   the teacher) takes off it.
+ *   together (see [OpenLists]): taken as handed in. Forthcoming seen in full is enough on its own
+ *   for work due later than that, which nothing but a hand-in (or the teacher) takes off it.
+ *   Past due counts only once it has been seen in full itself: nothing on another tab stands
+ *   for it.
  *
  * A class team's own Assignments tab holds that class's work alone ([ListScope]), so it only
  * ever counts for that class. Its Past due reaches further back than the app's own list, which a
@@ -45,15 +45,13 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
     sealed interface Sighting {
         /**
          * A list tab's cards, without their positions: scrolling doesn't change what's there.
-         * [scope] says whose work it holds, and [pastDueMarked] whether the Past due tab said it
-         * held work (null on Past due itself, or a narrowed list, where it says nothing useful).
-         * [openLists] is set when this sighting completes a view of the open tabs in full.
+         * [scope] says whose work it holds. [openLists] is set when this sighting completes a
+         * view of the open tabs in full.
          */
         data class OnList(
             val tab: Tab,
             val cards: List<ListCard>,
             val scope: ListScope = ListScope(className = null, narrowed = false),
-            val pastDueMarked: Boolean? = null,
             val openLists: OpenLists? = null,
         ) : Sighting
 
@@ -201,27 +199,18 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         // screen only means the list may not be whole yet, which fullView allows for.
         val loading = TeamsScreens.isLoading(root)
         val scope = TeamsScreens.listScope(root)
-        val seen = Sighting.OnList(
-            tab = tab,
-            cards = TeamsScreens.cards(root).map { it.copy(bounds = IntRect.EMPTY) },
-            scope = scope,
-            pastDueMarked = TeamsScreens.pastDueMarked(root).takeIf { !scope.narrowed },
-        )
+        val seen = Sighting.OnList(tab, TeamsScreens.cards(root).map { it.copy(bounds = IntRect.EMPTY) }, scope)
         noteSwitch(seen, loading)
         if (loading) {
             candidate = null
             return null
         }
         val inScope = saved.filter { scope.className == null || it.className == scope.className }
-        val hold = maxOf(
-            when {
-                seen.cards.isNotEmpty() -> config.settleMs
-                tab != Tab.Completed && inScope.any { it.tab == tab.toAssignmentTab() } -> config.suspectEmptySettleMs
-                else -> config.emptySettleMs
-            },
-            // Past due without its mark is Past due empty: as suspect, if it had work, as an empty tab.
-            if (seen.pastDueMarked == false && inScope.any { it.tab == AssignmentTab.PastDue }) config.suspectEmptySettleMs else 0L,
-        )
+        val hold = when {
+            seen.cards.isNotEmpty() -> config.settleMs
+            tab != Tab.Completed && inScope.any { it.tab == tab.toAssignmentTab() } -> config.suspectEmptySettleMs
+            else -> config.emptySettleMs
+        }
         // Until the list has changed since its tab was selected, the rows may be the last tab's.
         // Whether it's whole is part of what must hold still: Teams may drop its "load more"
         // placeholder a moment before the cards it fetched arrive. Once it has held, a list
@@ -232,12 +221,10 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         if (seen == lastUsed && whole == lastUsedWhole) {
             // Nothing new, but what was seen in full still is: the ten minutes run from now.
             if (whole && !scope.narrowed) fullViews[scope.className to tab]?.let { fullViews[scope.className to tab] = it.copy(at = wallClock) }
-            notePastDue(seen, wallClock)
             return null
         }
         lastUsed = seen
         lastUsedWhole = whole
-        notePastDue(seen, wallClock)
         val openLists = when {
             tab == Tab.Completed -> {
                 completedIds[scope.className] = seen.cards.map { it.id }.toSet()
@@ -299,20 +286,6 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         }
         if (loading || seen.cards != rowsAtSwitch) changedSinceSwitch = true
         lastSeenList = seen
-    }
-
-    /**
-     * Past due, seen without its mark from another tab, is Past due seen in full and empty. With
-     * its mark, an empty view of it no longer stands.
-     */
-    private fun notePastDue(seen: Sighting.OnList, wallClock: Long) {
-        val marked = seen.pastDueMarked ?: return
-        val key = seen.scope.className to Tab.PastDue
-        if (!marked) {
-            fullViews[key] = FullView(emptySet(), anyHandedIn = false, at = wallClock)
-        } else if (fullViews[key]?.ids?.isEmpty() == true) {
-            fullViews.remove(key)
-        }
     }
 
     /**

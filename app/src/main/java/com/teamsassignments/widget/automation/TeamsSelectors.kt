@@ -64,12 +64,6 @@ object TeamsSelectors {
     fun emptyList(tab: Tab) = Regex("""^No ${Regex.escape(tab.label)} assignments\b""", RegexOption.IGNORE_CASE)
 
     /**
-     * The Past due tab's description while it holds work, on the other tabs (a red dot by its
-     * label). Without it, Past due is empty. Once selected, the tab reads just `Past due`.
-     */
-    const val PAST_DUE_MARKER = "You have past due assignments"
-
-    /**
      * The chip Filter → Classes leaves over the list, by its description: `Clear class 10H
      * filter`. The list then holds the chosen classes' work alone.
      */
