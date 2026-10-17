@@ -187,7 +187,9 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             return seen
         }
         val tab = TeamsScreens.selectedTab(root)?.takeIf { TeamsScreens.isList(root) }
-        if (tab == null) {
+        // Nor is a list whose toolbar isn't drawn yet: it can't say whose work it holds, the app's
+        // own or one class team's, whose Past due reaches back further (Codex review).
+        if (tab == null || TeamsScreens.toolbarTitle(root).isEmpty()) {
             candidate = null
             return null
         }

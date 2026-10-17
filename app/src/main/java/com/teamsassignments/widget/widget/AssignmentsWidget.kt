@@ -124,7 +124,7 @@ private fun WidgetContent(state: WidgetState, serviceOn: Boolean) {
 @Composable
 private fun Header(state: WidgetState) {
     val context = LocalContext.current
-    val failed = state.status is SyncStatus.Failed
+    val failed = WidgetText.failure(state) != null
     Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(GlanceModifier.defaultWeight()) {
             Text(

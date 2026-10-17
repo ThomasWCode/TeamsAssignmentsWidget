@@ -21,15 +21,25 @@ object WidgetText {
     fun subtitle(state: WidgetState, clock: Clock, use24Hour: Boolean, locale: Locale = Locale.getDefault()): String =
         when (val status = state.status) {
             is SyncStatus.Running -> if (status.total > 0) "Syncing ${status.done}/${status.total}…" else "Syncing…"
-            is SyncStatus.Failed -> "Last sync failed: ${status.reason}"
+            is SyncStatus.Failed -> failure(state)?.let { "Last sync failed: ${it.reason}" } ?: updated(state, clock, use24Hour, locale)
             // A stop the user chose keeps the time, since the list is still as it was then.
             is SyncStatus.Stopped -> state.updatedAt
                 ?.let { "${status.summary} · updated ${whenText(it, clock, use24Hour, locale)}" }
                 ?: status.summary
-            SyncStatus.Idle -> state.updatedAt
-                ?.let { "Updated ${whenText(it, clock, use24Hour, locale)} · ${dueCount(state.assignments.size)}" }
-                ?: "Tap ↻ to sync with Teams"
+            SyncStatus.Idle -> updated(state, clock, use24Hour, locale)
         }
+
+    /**
+     * The last sync's failure, unless both open lists have been seen in full in Teams since
+     * ([WidgetState.listsSeenAt]): the list is up to date despite it, so the widget says so.
+     */
+    fun failure(state: WidgetState): SyncStatus.Failed? =
+        (state.status as? SyncStatus.Failed)?.takeIf { failed -> state.listsSeenAt?.let { it > failed.at } != true }
+
+    private fun updated(state: WidgetState, clock: Clock, use24Hour: Boolean, locale: Locale): String =
+        state.updatedAt
+            ?.let { "Updated ${whenText(it, clock, use24Hour, locale)} · ${dueCount(state.assignments.size)}" }
+            ?: "Tap ↻ to sync with Teams"
 
     private fun dueCount(count: Int) = if (count == 0) "nothing due" else "$count due"
 
