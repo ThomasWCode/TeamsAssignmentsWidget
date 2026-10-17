@@ -145,11 +145,14 @@ class TeamsAutomationService : AccessibilityService() {
                 log = log::add,
                 isCancelled = { cancelRequested },
             )
+            // A reason worth showing for not finding it, which the user can put right.
+            var stopped: String? = null
             val opened = try {
                 // Off the main thread: every step reads Teams' whole accessibility tree over IPC.
                 withContext(Dispatchers.Default) { navigate.run(target, store.state.value.assignments) }
             } catch (e: SyncAbort) {
                 log.add("Opening stopped: ${e.reason}")
+                if (e.reason == SyncAbort.NARROWED) stopped = e.reason
                 if (e.byUser) null else false
             } catch (e: CancellationException) {
                 throw e
@@ -173,7 +176,7 @@ class TeamsAutomationService : AccessibilityService() {
                 WidgetUpdater.update(this@TeamsAutomationService)
                 banner.showMessage("Taken as handed in: “${target.title}” is on neither Forthcoming nor Past due")
             } else if (opened == false) {
-                banner.showMessage("Couldn't find “${target.title}” in Teams")
+                banner.showMessage(stopped?.let { "Couldn't open “${target.title}”: $it" } ?: "Couldn't find “${target.title}” in Teams")
             }
             lookAfterwards()
         }
@@ -347,13 +350,13 @@ class TeamsAutomationService : AccessibilityService() {
 
     /**
      * Keeps the list up to date from what the user looks at in Teams Assignments, pressing
-     * nothing (see [TeamsObserver]). It looks shortly after Teams changes, again while the screen
-     * is still settling, and when [LookPacer] says a look is owed; changes that arrive meanwhile
-     * are caught by the next look.
+     * nothing (see [TeamsObserver]). It looks shortly after Teams changes, and when [LookPacer]
+     * says a look is owed, as it is while the screen is still settling; changes that arrive
+     * meanwhile are caught by the next look.
      */
     private suspend fun watchTeams() {
         delay(LOOK_DELAY_MS)
-        while (teamsChanged || observer.settling || pacer.owed) {
+        while (teamsChanged || pacer.owed) {
             teamsChanged = false
             if (isBusy) return
             lookAtTeams()
@@ -378,8 +381,10 @@ class TeamsAutomationService : AccessibilityService() {
             }
         }
         if (isBusy) return
-        // A page that doesn't name Assignments counts only as an assignment's own screen.
-        val onAssignments = view == TeamsView.Assignments || (root != null && TeamsScreens.isDetail(root))
+        // A page that doesn't name Assignments counts if it's an assignment's own screen, or any
+        // Assignments list, a class team's tab say: TeamsObserver works out whose list it is (the
+        // app's own, one class's, or not known yet, which it leaves till it is).
+        val onAssignments = view == TeamsView.Assignments || (root != null && (TeamsScreens.isDetail(root) || TeamsScreens.isList(root)))
         if (root == null || !onAssignments) {
             // Assignments whose tree couldn't be copied (changing underneath, say) is tried again
             // shortly, as is a page that may yet load as an assignment's. Anywhere but on
@@ -392,19 +397,35 @@ class TeamsAutomationService : AccessibilityService() {
             if (view != TeamsView.Assignments) observer.reset()
             return
         }
-        pacer.looked(LookPacer.Outcome.Read, now)
-        val sighting = observer.look(root, SystemClock.elapsedRealtime(), System.currentTimeMillis(), store.state.value.assignments)
-            ?: return
-        var changes = emptyList<String>()
-        store.applyObserved { saved, handedInLately ->
-            val merged = TeamsObserver.merge(
-                sighting, saved, DueDateParser(Clock.systemDefaultZone()), System.currentTimeMillis(), handedInLately,
-            )
-            changes = merged.changes
-            AssignmentStore.Observed(merged.assignments, merged.handedIn)
+        // A sync owns the list while one runs: the store would refuse what's seen, and the observer
+        // would have spent the sighting.
+        if (store.state.value.status is SyncStatus.Running) {
+            pacer.looked(LookPacer.Outcome.Read, now)
+            return
         }
-        if (changes.isEmpty()) return
-        changes.forEach { log.add("Seen in Teams: $it") }
+        val sighting = observer.look(root, SystemClock.elapsedRealtime(), System.currentTimeMillis(), store.state.value.assignments)
+        pacer.looked(LookPacer.Outcome.Read, now, settling = observer.settling)
+        if (sighting == null) return
+        var changes = emptyList<String>()
+        var notes = emptyList<String>()
+        var listsSeen = false
+        var seenOpen = emptyList<String>()
+        val wallClock = System.currentTimeMillis()
+        store.applyObserved { saved, handedInLately ->
+            val merged = TeamsObserver.merge(sighting, saved, DueDateParser(Clock.systemDefaultZone()), wallClock, handedInLately)
+            changes = merged.changes
+            notes = merged.notes
+            listsSeen = merged.listsSeenAt != null
+            seenOpen = merged.seenOpen
+            AssignmentStore.Observed(merged.assignments, merged.handedIn, merged.listsSeenAt)
+        }
+        observer.sawOpen(seenOpen, wallClock)
+        (changes + notes).forEach { log.add("Seen in Teams: $it") }
+        // Seeing both lists in full moves the widget's "Updated" time, even with nothing changed.
+        if (changes.isEmpty() && !listsSeen) {
+            if (notes.isNotEmpty()) log.persist()
+            return
+        }
         log.persist()
         WidgetUpdater.update(this)
     }

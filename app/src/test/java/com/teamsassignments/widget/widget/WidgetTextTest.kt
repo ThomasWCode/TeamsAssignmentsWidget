@@ -9,6 +9,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.util.Locale
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class WidgetTextTest {
 
@@ -34,6 +35,25 @@ class WidgetTextTest {
             subtitle(WidgetState(assignments = listOf(assignment(null), assignment(null)), lastSuccessAt = millis("2026-09-28T13:32:00Z"))),
         )
         assertEquals("Updated 14:32 · nothing due", subtitle(WidgetState(lastSuccessAt = millis("2026-09-28T13:32:00Z"))))
+    }
+
+    @Test
+    fun `both lists seen in full in Teams since the last sync count as an update`() {
+        fun subtitle(state: WidgetState) = WidgetText.subtitle(state, clock, use24Hour = true, locale = Locale.UK)
+        val seen = WidgetState(lastSuccessAt = millis("2026-09-28T08:00:00Z"), listsSeenAt = millis("2026-09-28T13:32:00Z"))
+        assertEquals("Updated 14:32 · nothing due", subtitle(seen))
+        assertEquals("Updated 14:32 · nothing due", subtitle(seen.copy(lastSuccessAt = null)))
+        // A sync since is the later.
+        assertEquals("Updated 14:35 · nothing due", subtitle(seen.copy(lastSuccessAt = millis("2026-09-28T13:35:00Z"))))
+
+        // Codex review: a failed sync stood over the newer time. Both lists seen in full since put
+        // the list right, and the widget says so; seen before the failure, they don't.
+        val failed = seen.copy(status = SyncStatus.Failed("Couldn't read the Past due list", millis("2026-09-28T13:00:00Z")))
+        assertEquals("Updated 14:32 · nothing due", subtitle(failed))
+        assertNull(WidgetText.failure(failed))
+        val failedSince = failed.copy(status = SyncStatus.Failed("Couldn't read the Past due list", millis("2026-09-28T13:33:00Z")))
+        assertEquals("Last sync failed: Couldn't read the Past due list", subtitle(failedSince))
+        assertEquals<SyncStatus?>(failedSince.status, WidgetText.failure(failedSince))
     }
 
     @Test

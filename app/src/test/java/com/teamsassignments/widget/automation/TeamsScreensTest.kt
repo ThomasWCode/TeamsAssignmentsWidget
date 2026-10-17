@@ -571,4 +571,86 @@ class TeamsScreensTest {
         val root = node("", children = listOf(node("", id = TeamsSelectors.DETAIL_CONTAINER, children = listOf(pageButton))))
         assertNull(TeamsScreens.handInButton(root))
     }
+
+    // Captured on 17 Oct
+
+    @Test
+    fun `tells every class's list from one class's, and from one narrowed by Filter`() {
+        assertEquals(TeamsScreens.ListScope(className = null, narrowed = false), TeamsScreens.listScope(Fixtures.load("list_forthcoming")))
+        assertEquals(
+            TeamsScreens.ListScope(className = "12.1 German 2026-27", narrowed = false),
+            TeamsScreens.listScope(Fixtures.load("list_class_forthcoming")),
+        )
+        // Filter → Classes leaves a chip to clear it; a class team's empty search box narrows nothing.
+        assertEquals(TeamsScreens.ListScope(className = null, narrowed = true), TeamsScreens.listScope(Fixtures.load("list_forthcoming_filtered")))
+        val searched = node(
+            "",
+            children = listOf(
+                node("Assignments", id = TeamsSelectors.TOOLBAR_TITLE),
+                FakeNode(
+                    className = "android.widget.EditText", text = "Prep", contentDescription = "", viewId = "",
+                    bounds = IntRect(0, 0, 100, 100), isClickable = true, isScrollable = false, isSelected = false,
+                    children = emptyList(), onAction = { _, _ -> false },
+                ),
+            ),
+        )
+        assertTrue(TeamsScreens.listScope(searched).narrowed)
+        // Claude review: a Teams that reported the box's placeholder as its text mustn't read as a search.
+        val placeholder = node(
+            "",
+            children = listOf(
+                node("Assignments", id = TeamsSelectors.TOOLBAR_TITLE),
+                FakeNode(
+                    className = "android.widget.EditText", text = "Search by assignment title", contentDescription = "", viewId = "",
+                    bounds = IntRect(0, 0, 100, 100), isClickable = true, isScrollable = false, isSelected = false,
+                    children = emptyList(), onAction = { _, _ -> false },
+                ),
+            ),
+        )
+        assertFalse(TeamsScreens.listFiltered(placeholder))
+
+        // The app's own list says so in its toolbar; a class team's, or one not drawn yet, doesn't.
+        listOf("list_forthcoming", "list_forthcoming_earlier_today", "list_forthcoming_filtered", "list_past_due_empty")
+            .forEach { assertTrue(TeamsScreens.isAppList(Fixtures.load(it)), it) }
+        listOf("list_class_forthcoming", "list_class_forthcoming_untitled", "list_assignments_loading")
+            .forEach { assertFalse(TeamsScreens.isAppList(Fixtures.load(it)), it) }
+        assertEquals(TeamsScreens.ListScope(className = null, narrowed = true), TeamsScreens.listScope(Fixtures.load("list_class_forthcoming_untitled")))
+    }
+
+    @Test
+    fun `a class team's cards leave the class out, and its own screens name it`() {
+        assertTrue(cards("list_class_forthcoming").all { it.className.isEmpty() })
+        val root = Fixtures.load("detail_239336fa_class_team")
+        assertTrue(TeamsScreens.classInToolbar(root))
+        assertEquals("12.1 German 2026-27", TeamsScreens.detail(root)!!.className)
+        assertEquals("Due 20 October 2026 09:00", TeamsScreens.detail(root)!!.dueText)
+    }
+
+    @Test
+    fun `an open tab with nothing on it has no list, and is whole`() {
+        listOf(
+            "list_class_forthcoming_empty" to Tab.Forthcoming, "list_class_past_due_empty" to Tab.PastDue,
+            "list_forthcoming_filtered" to Tab.Forthcoming, "list_past_due_empty" to Tab.PastDue,
+        ).forEach { (fixture, tab) ->
+            val root = Fixtures.load(fixture)
+            assertTrue(TeamsScreens.emptyListShown(root, tab), fixture)
+            assertTrue(TeamsScreens.wholeListInTree(root), fixture)
+            assertTrue(TeamsScreens.cards(root).isEmpty(), fixture)
+        }
+        // Another tab's words are no sign this one is empty.
+        assertFalse(TeamsScreens.emptyListShown(Fixtures.load("list_class_forthcoming_empty"), Tab.PastDue))
+        assertFalse(TeamsScreens.emptyListShown(Fixtures.load("list_forthcoming"), Tab.Forthcoming))
+    }
+
+    @Test
+    fun `a collapsed card with a tag leaves its class unknown`() {
+        // `… Due at 21:42 • Challenge Physics Skills & Stretch 12.2-PH3`: the tag and the class can't
+        // be told apart, and "Challenge Physics Skills & Stretch 12.2-PH3" would pass for a class.
+        val card = TeamsScreens.cards(
+            node("", children = listOf(node("PREP 2 Due at 21:42 • Challenge Physics Skills & Stretch 12.2-PH3", id = "8491c9ab-478e-4359-b5ce-d5a8cf70d081"))),
+        ).single()
+        assertTrue(card.collapsed)
+        assertEquals("PREP 2", card.title)
+        assertEquals("", card.className)
+    }
 }

@@ -112,7 +112,7 @@ private fun WidgetContent(state: WidgetState, serviceOn: Boolean) {
                 body = "Turn on Teams Assignments sync so ↻ can read your assignments.",
                 modifier = GlanceModifier.clickable(actionStartActivity(Intent(LocalContext.current, MainActivity::class.java))),
             )
-            state.assignments.isEmpty() && state.lastSuccessAt != null ->
+            state.assignments.isEmpty() && state.updatedAt != null ->
                 Message(title = "Nothing due 🎉", body = "Tap ↻ to sync again.")
             state.assignments.isEmpty() ->
                 Message(title = "No assignments yet", body = "Tap ↻ to read them from Teams.")
@@ -124,7 +124,7 @@ private fun WidgetContent(state: WidgetState, serviceOn: Boolean) {
 @Composable
 private fun Header(state: WidgetState) {
     val context = LocalContext.current
-    val failed = state.status is SyncStatus.Failed
+    val failed = WidgetText.failure(state) != null
     Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(GlanceModifier.defaultWeight()) {
             Text(

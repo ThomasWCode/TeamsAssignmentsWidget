@@ -10,7 +10,10 @@ package com.teamsassignments.widget.automation
  *   is owed another, up to [maxFailures] in a row, and doesn't count as elsewhere;
  * - so is one that found an app's page it couldn't place. An assignment opened from Teams'
  *   Activity feed is such a page until it has loaded, a second or two on the phone. After that
- *   many looks in a row, the page is some other app's, and counts as elsewhere.
+ *   many looks in a row, the page is some other app's, and counts as elsewhere;
+ * - a look that read a screen still settling ([TeamsObserver.settling]) is owed another, to see
+ *   it once it has held still. Only a look that read the screen says so: one that couldn't copy
+ *   it says nothing about it, so a copy that keeps failing still gets [maxFailures] looks at most.
  */
 class LookPacer(private val recheckMs: Long = 5_000, private val maxFailures: Int = 5) {
 
@@ -52,11 +55,13 @@ class LookPacer(private val recheckMs: Long = 5_000, private val maxFailures: In
         return true
     }
 
-    fun looked(outcome: Outcome, now: Long) {
+    /** What the look found. For [Outcome.Read], [settling] is whether the screen read hasn't held still yet. */
+    fun looked(outcome: Outcome, now: Long, settling: Boolean = false) {
         when (outcome) {
             Outcome.Read -> {
                 elsewhereAt = null
                 failures = 0
+                owed = settling
             }
             Outcome.Elsewhere -> {
                 elsewhereAt = now

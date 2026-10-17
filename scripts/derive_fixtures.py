@@ -70,11 +70,26 @@ def stale_past_due_rows():
 
 
 def empty_and_loading():
-    """Past due with no cards, then the same with a spinner (Fluent's has role=progressbar)."""
+    """Past due with nothing on it, then the same with a spinner (Fluent's has role=progressbar).
+    An empty tab has no list at all, only the words saying so, as captured on 17 Oct in a class
+    team's Assignments tab (list_class_past_due_empty): here they take the list's place."""
     tree = load("list_past_due")
     rows = list_view(tree)
-    for child in list(rows):
-        rows.remove(child)
+    parent = next(p for p in tree.getroot().iter("node") if rows in list(p))
+    at = list(parent).index(rows)
+    parent.remove(rows)
+    empty = ET.Element("node", {
+        "index": rows.get("index"), "text": "", "resource-id": "", "class": "android.view.View",
+        "package": "com.microsoft.teams", "content-desc": "", "clickable": "false", "enabled": "true",
+        "focusable": "false", "scrollable": "false", "selected": "false", "bounds": "[45,507][1035,1272]",
+    })
+    ET.SubElement(empty, "node", {
+        "index": "1", "text": "No past due assignments right now. \U0001F389", "resource-id": "",
+        "class": "android.widget.TextView", "package": "com.microsoft.teams", "content-desc": "",
+        "clickable": "false", "enabled": "true", "focusable": "false", "scrollable": "false",
+        "selected": "false", "bounds": "[45,1154][1035,1272]",
+    })
+    parent.insert(at, empty)
     save(tree, "list_past_due_empty")
     ET.SubElement(by_id(tree, "root"), "node", {
         "index": "9", "text": "", "resource-id": "", "class": "android.widget.ProgressBar",
@@ -205,6 +220,31 @@ def stale_tab_rows():
     save(tree, "list_past_due_completed_rows")
 
 
+def past_due_clear():
+    """Forthcoming once Past due holds nothing: its tab reads just "Past due", without the
+    description and dot that say it holds work (as in list_class_forthcoming_empty), and the
+    banner saying so has gone."""
+    tree = load("list_forthcoming")
+    tab = by_id(tree, "tab-Past-due")
+    tab.set("text", "Past due")
+    tab.set("content-desc", "")
+    for child in list(tab):
+        tab.remove(child)
+    banner = next(n for n in tree.getroot().iter("node") if n.get("text") == "You have past due assignments")
+    parents = {c: p for p in tree.getroot().iter("node") for c in p}
+    box = parents[banner]
+    parents[box].remove(box)
+    save(tree, "list_forthcoming_past_due_clear")
+
+
+def untitled_class_list():
+    """A class team's Forthcoming before Teams has drawn its toolbar's title, as a screen can be for
+    a moment while it comes up: it could be the app's own list or one class's (Codex review)."""
+    tree = load("list_class_forthcoming")
+    by_id(tree, "com.microsoft.teams:id/action_bar_title_text").set("text", "")
+    save(tree, "list_class_forthcoming_untitled")
+
+
 def hand_in_disabled():
     """A detail screen whose Hand in button is greyed out."""
     tree = load("detail_4c958b24")
@@ -224,3 +264,5 @@ if __name__ == "__main__":
     prefix_titled_detail()
     virtualised()
     stale_tab_rows()
+    past_due_clear()
+    untitled_class_list()

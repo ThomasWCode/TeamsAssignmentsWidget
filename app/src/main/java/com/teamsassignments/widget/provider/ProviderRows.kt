@@ -34,7 +34,7 @@ internal object ProviderRows {
             is SyncStatus.Failed -> Triple("failed", s.reason, s.at)
             is SyncStatus.Stopped -> Triple("stopped", s.summary, s.at)
         }
-        val row = arrayOf<Any?>(state.lastSuccessAt, status, message, at, state.assignments.size, if (syncServiceEnabled) 1 else 0)
+        val row = arrayOf<Any?>(state.lastSuccessAt, status, message, at, state.assignments.size, if (syncServiceEnabled) 1 else 0, state.listsSeenAt)
         return Table(State.COLUMNS, listOf(row)).project(projection)
     }
 
