@@ -766,6 +766,37 @@ class TeamsObserverTest {
         // Not with the due time disagreeing: that's other work, left to the list, and no row is added.
         val otherWeek = cutShort.copy(dueAt = millis("2026-09-22T07:30:00Z"))
         assertEquals(listOf(otherWeek), merge(TeamsObserver().see("detail_4c958b24"), listOf(otherWeek)).assignments)
+
+        // Codex review: last week's row of the full title, due at another time, is no bar to it.
+        val lastWeek = Assignment(
+            key = "11111111-2222-3333-4444-555555555555", title = "Particle Physics Test", className = "12.2-PH3",
+            dueAt = millis("2026-09-22T07:30:00Z"),
+        )
+        val both = merge(TeamsObserver().see("detail_4c958b24"), listOf(lastWeek, cutShort))
+        assertEquals(listOf("read \"Particle Physics Test\""), both.changes)
+        assertEquals(lastWeek, both.assignments.first())
+        with(both.assignments.single { it.key == physics }) {
+            assertEquals("Particle Physics Test", title)
+            assertTrue(description.startsWith("1) Use results"), description)
+        }
+    }
+
+    @Test
+    fun `work seen open, unchanged, since the earlier view isn't taken as handed in for missing from it`() {
+        // Codex review: only a change moved lastSyncedAt on, so work seen open but unchanged since
+        // the earlier view (on its own screen, say, or a list that can't count) still looked missing.
+        val read = merge(
+            TeamsObserver().see("detail_4c958b24"),
+            listOf(Assignment(key = physics, title = "Particle Physics Test", className = "12.2-PH3", dueAt = millis("2026-09-29T07:30:00Z"))),
+        ).assignments.map { it.copy(lastSyncedAt = 0) }
+        val observer = TeamsObserver()
+        observer.see("list_past_due") // in full, without it
+        val seenOpen = merge(observer.see("detail_4c958b24", at = 2_000), read, wallClock = clock.millis() + 2_700)
+        assertTrue(seenOpen.changes.isEmpty(), "nothing on its screen has changed")
+        assertEquals(clock.millis() + 2_700, seenOpen.assignments.single().lastSyncedAt)
+        // Forthcoming in full, without it either (as Teams' list might be before it catches up).
+        val both = merge(observer.see("list_forthcoming_single", at = 4_000), seenOpen.assignments)
+        assertTrue(physics !in both.presumed, both.presumed.toString())
     }
 
     @Test

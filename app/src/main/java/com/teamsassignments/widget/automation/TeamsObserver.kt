@@ -421,11 +421,11 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 if (index >= 0) {
                     val old = out[index]
                     val updated = updated(old, card, dueAt, tab)
-                    if (updated != old) {
-                        out[index] = updated.copy(lastSyncedAt = wallClock)
-                        // The list's due time noted for the first time is no change worth a line.
-                        if (updated.copy(listDueAt = old.listDueAt) != old) changes += "updated \"${updated.title}\""
-                    }
+                    // Seen open now, changed or not, on whatever list: a view in full taken before
+                    // this can't speak for it (see OpenLists.since).
+                    out[index] = updated.copy(lastSyncedAt = wallClock)
+                    // The list's due time noted for the first time is no change worth a line.
+                    if (updated.copy(listDueAt = old.listDueAt) != old) changes += "updated \"${updated.title}\""
                     continue
                 }
                 // A detail screen seen on its own may have saved it already, without its GUID.
@@ -534,7 +534,9 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 .filter { dueAt == null || it.dueAt == null || it.dueAt == dueAt }
             // A row saved from a collapsed card may hold its title cut short: it counts only with
             // its class and due time both known and agreeing, and then takes the screen's title.
-            val cutShort = if (sameTitle.isEmpty() && className != null && dueAt != null) {
+            // Another row of the full title is no bar unless it could be this one: last week's,
+            // due at another time, can't.
+            val cutShort = if (candidates.isEmpty() && className != null && dueAt != null) {
                 saved.filter { TeamsScreens.sameTitle(it.title, title) && it.className == className && it.dueAt == dueAt }
             } else {
                 emptyList()
@@ -618,9 +620,12 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                 },
                 detailReadAt = match.detailReadAt,
             )
-            // Read before and unchanged since: nothing worth saving.
-            if (updated == match && match.detailReadAt != null) return unchanged
             val out = saved.toMutableList()
+            // Read before and unchanged since: nothing worth a line, but it was seen open now.
+            if (updated == match && match.detailReadAt != null) {
+                out[index] = match.copy(lastSyncedAt = wallClock)
+                return Merged(out, emptyList())
+            }
             out[index] = updated.copy(detailReadAt = wallClock, lastSyncedAt = wallClock)
             return Merged(out, listOf("read \"$title\""))
         }

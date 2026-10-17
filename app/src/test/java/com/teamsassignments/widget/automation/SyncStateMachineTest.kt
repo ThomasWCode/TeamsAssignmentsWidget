@@ -198,6 +198,10 @@ class SyncStateMachineTest {
         val stuck = FakeTeamsDevice().apply { launchLoading = "list_class_forthcoming" to Long.MAX_VALUE / 2 }
         val abort = assertFailsWith<SyncAbort> { machine(stuck).run(emptyList()) }
         assertEquals("Couldn't open Teams Assignments", abort.reason)
+
+        // Codex review: nor while its toolbar isn't drawn, when it could be either list.
+        val untitled = FakeTeamsDevice().apply { launchLoading = "list_class_forthcoming_untitled" to Long.MAX_VALUE / 2 }
+        assertEquals("Couldn't open Teams Assignments", assertFailsWith<SyncAbort> { machine(untitled).run(emptyList()) }.reason)
     }
 
     @Test
