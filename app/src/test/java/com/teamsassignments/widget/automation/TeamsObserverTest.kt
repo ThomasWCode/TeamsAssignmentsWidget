@@ -883,26 +883,13 @@ class TeamsObserverTest {
     }
 
     @Test
-    fun `Past due without its mark counts as seen in full, and empty`() {
-        // Teams marks the Past due tab while it holds work (captured 17 Oct). Without its mark,
-        // Forthcoming seen in full is enough for late work handed in elsewhere too.
+    fun `Past due counts only once seen itself, whatever the other tabs show of it`() {
+        // Teams marks the Past due tab while it holds work (captured 17 Oct). Reading along once took
+        // the tab without its mark for Past due seen in full and empty; the user asked it not to.
         val late = gone.copy(dueAt = clock.millis() - 3 * 3_600_000, tab = AssignmentTab.PastDue)
-        val clear = Fixtures.load("list_forthcoming_past_due_clear")
-        val observer = TeamsObserver()
-        // With late work saved, an unmarked tab is as suspect as an empty list: it must hold for 6 s.
-        assertNull(observer.lookAt(clear, 0, listOf(late)))
-        assertNull(observer.lookAt(clear, 5_000, listOf(late)))
-        assertTrue(observer.settling)
-        val sighting = assertIs<Sighting.OnList>(observer.lookAt(clear, 6_000, listOf(late)))
-        assertEquals(false, sighting.pastDueMarked)
-        val merged = merge(sighting, listOf(late))
-        assertEquals(listOf(late.key), merged.presumed)
-        assertNotNull(merged.listsSeenAt)
-
-        // Marked again, Past due no longer counts as empty.
-        val marked = TeamsObserver()
-        marked.see("list_forthcoming_past_due_clear")
-        assertTrue(merge(marked.see("list_forthcoming", at = 2_000), listOf(late)).presumed.isEmpty())
+        val merged = merge(TeamsObserver().see("list_forthcoming_past_due_clear", saved = listOf(late)), listOf(late))
+        assertTrue(merged.presumed.isEmpty())
+        assertNull(merged.listsSeenAt, "Past due wasn't seen")
     }
 
     // Narrowed lists, and a class team's own tab
@@ -929,7 +916,6 @@ class TeamsObserverTest {
         val filtered = assertIs<Sighting.OnList>(TeamsObserver().see17("list_forthcoming_filtered", saved = listOf(later), hold = 6_000))
         assertEquals(TeamsScreens.ListScope(className = null, narrowed = true), filtered.scope)
         assertNull(filtered.openLists)
-        assertNull(filtered.pastDueMarked, "the filter hides other classes' late work too")
         assertEquals(listOf(later), merge17(filtered, listOf(later)).assignments)
     }
 
@@ -990,7 +976,7 @@ class TeamsObserverTest {
 
     @Test
     fun `a class team's empty Forthcoming takes that class's later work as handed in`() {
-        // Captured on 17 Oct: a class with nothing set, its Past due unmarked and empty too.
+        // Captured on 17 Oct: a class with nothing set. Forthcoming in full is enough for later work.
         val avg = "12.2-PH3 AVG (2026-28)"
         val later = gone.copy(className = avg, dueAt = millis("2026-10-20T08:00:00Z"))
         val otherClass = later.copy(key = "66666666-7777-8888-9999-000000000000", className = german)

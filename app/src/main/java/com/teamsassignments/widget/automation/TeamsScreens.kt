@@ -92,15 +92,6 @@ object TeamsScreens {
     }
 
     /**
-     * Whether the Past due tab says it holds work ([TeamsSelectors.PAST_DUE_MARKER]), or null
-     * while it is the tab selected, which never says.
-     */
-    fun pastDueMarked(root: UiNode): Boolean? {
-        val tab = tabNode(root, Tab.PastDue)?.takeIf { !it.isSelected } ?: return null
-        return tab.contentDescription.squash() == TeamsSelectors.PAST_DUE_MARKER
-    }
-
-    /**
      * Whether Teams' window is fully in place. While a screen slides in, its window reports an
      * offset: captured on the phone mid-Back as `[-337,0][743,2340]` instead of `[0,0][1080,2340]`.
      */

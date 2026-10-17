@@ -630,16 +630,6 @@ class TeamsScreensTest {
     }
 
     @Test
-    fun `the Past due tab says whether it holds work, except while selected`() {
-        assertEquals(true, TeamsScreens.pastDueMarked(Fixtures.load("list_forthcoming")))
-        assertEquals(true, TeamsScreens.pastDueMarked(Fixtures.load("list_completed")))
-        assertEquals(true, TeamsScreens.pastDueMarked(Fixtures.load("list_class_forthcoming")))
-        assertEquals(false, TeamsScreens.pastDueMarked(Fixtures.load("list_class_forthcoming_empty")))
-        assertEquals(false, TeamsScreens.pastDueMarked(Fixtures.load("list_forthcoming_past_due_clear")))
-        assertNull(TeamsScreens.pastDueMarked(Fixtures.load("list_past_due")))
-    }
-
-    @Test
     fun `a collapsed card with a tag leaves its class unknown`() {
         // `… Due at 21:42 • Challenge Physics Skills & Stretch 12.2-PH3`: the tag and the class can't
         // be told apart, and "Challenge Physics Skills & Stretch 12.2-PH3" would pass for a class.

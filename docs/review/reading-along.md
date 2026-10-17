@@ -28,7 +28,7 @@ The findings and improvements below are as first written. Everything was then fi
 | F | The probes as regression tests | Each probe is now a test |
 | G | Show what reading along confirmed | `WidgetState.listsSeenAt`: the widget's *Updated* time is the later of it and the last sync, and the provider's state row has `lists_seen_at` |
 
-Three further improvements came from the phone, all built in 0.5.0 (see [Found on the phone](#found-on-the-phone)): Forthcoming in full counting on its own for later work, the Past due tab's mark, and reading a class team's own tab.
+Three further improvements came from the phone (see [Found on the phone](#found-on-the-phone)): Forthcoming in full counting on its own for later work and reading a class team's own tab, both in 0.5.0, and the Past due tab's mark, built and then taken out at the user's request.
 
 ## How it works
 
@@ -171,7 +171,7 @@ The undo path restores the row under its GUID. If the user goes Back before Team
 Looking through Teams on the phone (17 Oct, 0.4.0 installed) turned up these ways to see more, beyond the findings:
 
 - **Work handed in elsewhere went unseen.** "Laptops", due on the 19th, was handed in at 11:40, almost certainly on another device, and stayed on the widget until the 14:29 sync. Only both open tabs seen in full within ten minutes took such work off, and Teams opens on Forthcoming. **Built:** Forthcoming seen in full is enough on its own for work due more than 2 minutes after the look. Nothing moves such work to Past due, so only a hand-in, or the teacher, took it off.
-- **The Past due tab says whether it holds work.** On Forthcoming and Completed its description is `You have past due assignments` while it does, and it is a plain `Past due` when it doesn't. **Built:** unmarked, Past due counts as seen in full and empty, so late work handed in elsewhere goes too, without opening Past due. With late work saved, the unmarked tab must hold for 6 s first, as a suspect empty list must. A filtered list's mark is ignored, since the filter hides the other classes' late work.
+- **The Past due tab says whether it holds work.** On Forthcoming and Completed its description is `You have past due assignments` while it does, and it is a plain `Past due` when it doesn't. **Built, then taken out at the user's request:** unmarked, Past due counted as seen in full and empty, so late work handed in elsewhere went without opening Past due. Past due now counts only once it has been seen in full itself.
 - **A class team's own Assignments tab** is another way in, and Teams' own Past due footer sends students there for older work. **Built:** it's read, scoped to that class (above).
 - **Teams' Activity feed** lists every `<teacher> added an assignment`, with class, full title and due date, but no time. Left for now: tapping the alert already opens the assignment, which reading along reads and adds with its exact time, and alerts stay for days, so rows made from them could bring back work since handed in or deleted.
 - **Teams' notifications** could show new work without the user opening Teams at all. There were none on the phone to learn their format from, and the service would need notification events (a config change). Left until a real one can be captured.
