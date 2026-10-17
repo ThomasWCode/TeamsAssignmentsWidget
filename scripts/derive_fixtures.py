@@ -237,6 +237,14 @@ def past_due_clear():
     save(tree, "list_forthcoming_past_due_clear")
 
 
+def untitled_class_list():
+    """A class team's Forthcoming before Teams has drawn its toolbar's title, as a screen can be for
+    a moment while it comes up: it could be the app's own list or one class's (Codex review)."""
+    tree = load("list_class_forthcoming")
+    by_id(tree, "com.microsoft.teams:id/action_bar_title_text").set("text", "")
+    save(tree, "list_class_forthcoming_untitled")
+
+
 def hand_in_disabled():
     """A detail screen whose Hand in button is greyed out."""
     tree = load("detail_4c958b24")
@@ -257,3 +265,4 @@ if __name__ == "__main__":
     virtualised()
     stale_tab_rows()
     past_due_clear()
+    untitled_class_list()

@@ -595,6 +595,13 @@ class TeamsScreensTest {
             ),
         )
         assertTrue(TeamsScreens.listScope(searched).narrowed)
+
+        // The app's own list says so in its toolbar; a class team's, or one not drawn yet, doesn't.
+        listOf("list_forthcoming", "list_forthcoming_earlier_today", "list_forthcoming_filtered", "list_past_due_empty")
+            .forEach { assertTrue(TeamsScreens.isAppList(Fixtures.load(it)), it) }
+        listOf("list_class_forthcoming", "list_class_forthcoming_untitled", "list_assignments_loading")
+            .forEach { assertFalse(TeamsScreens.isAppList(Fixtures.load(it)), it) }
+        assertEquals(TeamsScreens.ListScope(className = null, narrowed = true), TeamsScreens.listScope(Fixtures.load("list_class_forthcoming_untitled")))
     }
 
     @Test

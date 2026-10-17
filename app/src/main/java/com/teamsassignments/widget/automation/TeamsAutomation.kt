@@ -119,8 +119,9 @@ abstract class TeamsAutomation(
 
     /**
      * Opens Teams on the Assignments list, backing out of a detail screen if Teams resumes on one.
-     * The app's own list, that is: a class team's Assignments tab, where Teams may resume before
-     * the link lands, holds that class's work alone.
+     * The app's own list, that is ([TeamsScreens.isAppList]): a class team's Assignments tab, where
+     * Teams may resume before the link lands, holds that class's work alone, and a list whose
+     * toolbar isn't drawn yet could be that.
      */
     protected suspend fun openAssignments() {
         log("Opening Teams Assignments")
@@ -130,7 +131,7 @@ abstract class TeamsAutomation(
         try {
             awaitScreen("the Assignments list", config.launchTimeoutMs) { root ->
                 when {
-                    TeamsScreens.isList(root) -> true.takeIf { TeamsScreens.listScope(root).className == null }
+                    TeamsScreens.isList(root) -> true.takeIf { TeamsScreens.isAppList(root) }
                     TeamsScreens.isDetail(root) && now() - lastBack > config.backRetryMs -> {
                         log("Teams resumed on a detail screen; going back")
                         device.back()
@@ -207,8 +208,9 @@ abstract class TeamsAutomation(
         var lastPending: Boolean? = null
         var stableSince = 0L
         return awaitScreen("the ${tab.label} list", config.stepTimeoutMs + emptySettleMs) { root ->
-            // A class team's own tab of that name holds one class's work: not this list.
-            if (TeamsScreens.selectedTab(root) != tab || TeamsScreens.listScope(root).className != null) {
+            // A class team's own tab of that name holds one class's work: not this list, nor is one
+            // whose toolbar can't say which it is yet.
+            if (TeamsScreens.selectedTab(root) != tab || !TeamsScreens.isAppList(root)) {
                 lastIds = null
                 return@awaitScreen null
             }

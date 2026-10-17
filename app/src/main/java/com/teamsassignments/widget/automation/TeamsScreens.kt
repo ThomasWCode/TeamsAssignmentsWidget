@@ -70,6 +70,13 @@ object TeamsScreens {
         )
     }
 
+    /**
+     * Whether this is the Assignments app's own list, its toolbar plainly titled `Assignments`:
+     * not a class team's, nor one whose toolbar hasn't been drawn yet, which could be either.
+     */
+    fun isAppList(root: UiNode): Boolean =
+        isList(root) && root.findById(TeamsSelectors.TOOLBAR_TITLE)?.text?.squash() == TeamsSelectors.ASSIGNMENTS_TITLE
+
     /** Whether the list is filtered by class (the chip to clear it shows) or searched by title (the box holds text). */
     fun listFiltered(root: UiNode): Boolean = root.walk().any {
         TeamsSelectors.CLEAR_CLASS_FILTER.matches(it.contentDescription.squash()) ||
