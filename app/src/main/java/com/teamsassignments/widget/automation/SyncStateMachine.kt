@@ -38,6 +38,8 @@ class SyncStateMachine(
 
         val listed = collectLists(previous)
         val previousByKey = previous.associateBy { it.key }
+        // Saved from their own screens before a list gave them a Teams id: each taken over once, by its card.
+        val unkeyed = previous.filterNot { TeamsSelectors.CARD_ID.matches(it.key) }.toMutableList()
         // Start with the tab that is already open, to save a switch.
         val openTab = device.teamsRoot()?.let(TeamsScreens::selectedTab)
         val ordered = listed.sortedBy { if (it.tab == openTab) 0 else 1 }
@@ -48,9 +50,9 @@ class SyncStateMachine(
             checkAbort()
             val (tab, card) = item
             val listDueAt = parser.parseList(card.headerDate, card.headerLabel, card.dueLine, tab.toAssignmentTab())?.toEpochMilli()
-            // One saved from its own screen before a list gave it its Teams id is found by its row, as
-            // reading along finds it, and takes the id, keeping the key it had as its former one.
-            val old = previousByKey[card.id] ?: previous.firstOrNull { !TeamsSelectors.CARD_ID.matches(it.key) && TeamsObserver.sameRow(it, card, listDueAt) }
+            // One saved from its own screen before a list gave it its Teams id is found by its row
+            // ([takenOver]), and takes the id, keeping the key it had as its former one.
+            val old = previousByKey[card.id] ?: takenOver(card, listDueAt, unkeyed, ordered.map { it.card })?.also { unkeyed.remove(it) }
             val assignment = if (!full && old != null && isFresh(old, card, listDueAt)) {
                 log("Kept saved details for \"${card.title}\"")
                 old.copy(key = card.id, formerKey = Assignment.formerKey(old, card.id), tab = tab.toAssignmentTab(), listDueAt = listDueAt, lastSyncedAt = wallClock())
@@ -197,4 +199,20 @@ class SyncStateMachine(
      */
     private fun rowUnchanged(old: Assignment, card: ListCard, listDueAt: Long?): Boolean =
         old.title == card.title && (old.listDueAt ?: old.dueAt) == listDueAt
+
+    companion object {
+        /**
+         * The row of [unkeyed] (saved from their own screens before a list gave them a Teams id, none
+         * taken yet) that [card] takes over: the one of its title, class and due time, as reading
+         * along finds one; else the one of its title and class where no other of the [listed] cards
+         * is of them too, as its own screen's due time and the list's can differ.
+         */
+        internal fun takenOver(card: ListCard, listDueAt: Long?, unkeyed: List<Assignment>, listed: List<ListCard>): Assignment? =
+            unkeyed.firstOrNull { TeamsObserver.sameRow(it, card, listDueAt) }
+                ?: unkeyed.firstOrNull { saved -> named(saved, card) && listed.count { named(saved, it) } == 1 }
+
+        /** Whether [card] is of [saved]'s title and class (a collapsed card's class can carry a tag, so it isn't asked). */
+        private fun named(saved: Assignment, card: ListCard): Boolean =
+            TeamsScreens.sameTitle(card.title, saved.title) && (card.collapsed || saved.className == card.className)
+    }
 }
