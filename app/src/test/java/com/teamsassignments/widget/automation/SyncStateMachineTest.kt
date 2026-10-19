@@ -106,6 +106,33 @@ class SyncStateMachineTest {
         assertTrue(synced.filter { it.key != hausaufgabe }.all { it.formerKey == null })
     }
 
+    private fun card(id: String, title: String, className: String) = ListCard(
+        id = id, title = title, dueLine = "Due at 08:30", className = className, tag = null,
+        headerDate = "20 Oct", headerLabel = "Tomorrow", collapsed = false, bounds = IntRect.EMPTY,
+    )
+
+    @Test
+    fun `a row from its own screen is taken over though the list's due time differs, where no other card is of its name`() {
+        val saved = Assignment(key = Assignment.fallbackKey("12.2-PH3", "Rubber bands plan"), title = "Rubber bands plan", className = "12.2-PH3", dueAt = millis("2026-10-20T10:30:00Z"))
+        val listed = listOf(card("11111111-2222-3333-4444-555555555555", "Rubber bands plan", "12.2-PH3"), card("66666666-7777-8888-9999-000000000000", "Other work", "12.2-PH3"))
+        // Its own screen said 10:30, the list 08:30: the one card of its title and class takes it.
+        assertEquals(saved, SyncStateMachine.takenOver(listed[0], millis("2026-10-20T08:30:00Z"), listOf(saved), listed))
+        assertNull(SyncStateMachine.takenOver(listed[1], millis("2026-10-20T08:30:00Z"), listOf(saved), listed))
+        // Two cards of its name, and neither of its time: neither, as the row can't tell which it was.
+        val twice = listed + card("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "Rubber bands plan", "12.2-PH3")
+        assertNull(SyncStateMachine.takenOver(twice[0], millis("2026-10-20T08:30:00Z"), listOf(saved), twice))
+    }
+
+    @Test
+    fun `a row from its own screen is taken over by one card only, so no key is listed twice`() = runTest {
+        val first = machine(FakeTeamsDevice()).run(previous = emptyList())
+        val real = first.single { it.key == hausaufgabe }
+        val unkeyed = real.copy(key = Assignment.fallbackKey(real.className, real.title), dueAt = real.listDueAt ?: real.dueAt)
+        val synced = machine(FakeTeamsDevice()).run(previous = first.map { if (it.key == hausaufgabe) unkeyed else it } + unkeyed.copy(description = "a second copy"))
+        assertEquals(1, synced.count { it.formerKey == unkeyed.key })
+        assertEquals(synced.size, synced.map { it.formerKey ?: it.key }.distinct().size)
+    }
+
     @Test
     fun `only ever presses tabs and assignment cards`() = runTest {
         val device = FakeTeamsDevice()
