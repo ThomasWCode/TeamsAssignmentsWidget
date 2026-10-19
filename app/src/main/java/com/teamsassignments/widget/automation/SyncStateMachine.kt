@@ -48,10 +48,12 @@ class SyncStateMachine(
             checkAbort()
             val (tab, card) = item
             val listDueAt = parser.parseList(card.headerDate, card.headerLabel, card.dueLine, tab.toAssignmentTab())?.toEpochMilli()
-            val old = previousByKey[card.id]
+            // One saved from its own screen before a list gave it its Teams id is found by its row, as
+            // reading along finds it, and takes the id, keeping the key it had as its former one.
+            val old = previousByKey[card.id] ?: previous.firstOrNull { !TeamsSelectors.CARD_ID.matches(it.key) && TeamsObserver.sameRow(it, card, listDueAt) }
             val assignment = if (!full && old != null && isFresh(old, card, listDueAt)) {
                 log("Kept saved details for \"${card.title}\"")
-                old.copy(tab = tab.toAssignmentTab(), listDueAt = listDueAt, lastSyncedAt = wallClock())
+                old.copy(key = card.id, formerKey = Assignment.formerKey(old, card.id), tab = tab.toAssignmentTab(), listDueAt = listDueAt, lastSyncedAt = wallClock())
             } else {
                 readDetail(tab, card, listDueAt, old)
             }
@@ -179,6 +181,7 @@ class SyncStateMachine(
                 else -> null
             },
             lastSyncedAt = wallClock(),
+            formerKey = Assignment.formerKey(old, card.id),
         )
     }
 

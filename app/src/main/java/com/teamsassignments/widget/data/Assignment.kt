@@ -10,7 +10,10 @@ enum class AssignmentTab { Forthcoming, PastDue }
 
 @Serializable
 data class Assignment(
-    /** The Teams assignment GUID (the card's view id), or [fallbackKey] if Teams didn't expose one. */
+    /**
+     * The Teams assignment GUID (the card's view id), or [fallbackKey] if Teams didn't expose one.
+     * Other apps know it by [formerKey] where it has one.
+     */
     val key: String,
     val title: String,
     val className: String,
@@ -36,9 +39,18 @@ data class Assignment(
     /** When the detail screen was last read; null if only the list row is known. */
     val detailReadAt: Long? = null,
     val lastSyncedAt: Long = 0,
+    /**
+     * The key it had before it took its Teams id ([fallbackKey]'s, saved from its own screen before
+     * the list showed its card), kept for good: other apps see it by this one, so its key changing
+     * underneath can't look to them like work handed in and new work set.
+     */
+    val formerKey: String? = null,
 ) {
     companion object {
         const val MAX_DESCRIPTION = 2_000
+
+        /** [old]'s former key as it's saved again under [key]: its own former key, or, its key changing, the one it had. */
+        fun formerKey(old: Assignment?, key: String): String? = old?.let { if (it.key != key) it.formerKey ?: it.key else it.formerKey }
 
         /** A stable key for a card without a GUID. */
         fun fallbackKey(className: String, title: String): String {

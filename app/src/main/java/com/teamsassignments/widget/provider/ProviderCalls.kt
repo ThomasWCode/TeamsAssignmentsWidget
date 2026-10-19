@@ -34,10 +34,16 @@ internal object ProviderCalls {
         else -> CallOutcome.Busy
     }
 
-    fun open(control: SyncControl?, key: String?, saved: List<Assignment>): CallOutcome = when {
-        key == null || saved.none { it.key == key } -> CallOutcome.UnknownKey
+    fun open(control: SyncControl?, key: String?, saved: List<Assignment>): CallOutcome {
+        // By the key other apps know it by: its own, or the one it had before it took its Teams id.
+        val target = key?.let { k -> saved.firstOrNull { it.key == k } ?: saved.firstOrNull { it.formerKey == k } }
+        return opened(control, target)
+    }
+
+    private fun opened(control: SyncControl?, target: Assignment?): CallOutcome = when {
+        target == null -> CallOutcome.UnknownKey
         control == null -> CallOutcome.ServiceOff
-        control.openAssignment(key) -> CallOutcome.Started
+        control.openAssignment(target.key) -> CallOutcome.Started
         // The service refuses when busy, or when the key has just left the list.
         control.isBusy -> CallOutcome.Busy
         else -> CallOutcome.UnknownKey

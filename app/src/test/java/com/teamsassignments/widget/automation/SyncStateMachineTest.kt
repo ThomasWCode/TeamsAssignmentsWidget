@@ -91,6 +91,22 @@ class SyncStateMachineTest {
     }
 
     @Test
+    fun `work saved from its own screen before a list showed it takes its Teams id, its key kept as its former one`() = runTest {
+        val first = machine(FakeTeamsDevice()).run(previous = emptyList())
+        val real = first.single { it.key == hausaufgabe }
+        val unkeyed = real.copy(key = Assignment.fallbackKey(real.className, real.title), dueAt = real.listDueAt ?: real.dueAt)
+        val synced = machine(FakeTeamsDevice()).run(previous = first.map { if (it.key == hausaufgabe) unkeyed else it })
+        assertEquals(first.size, synced.size)
+        with(synced.single { it.title == real.title }) {
+            assertEquals(hausaufgabe, key)
+            assertEquals(unkeyed.key, formerKey)
+        }
+        // Kept, sync after sync; and none for work that had its Teams id from the first.
+        assertEquals(unkeyed.key, machine(FakeTeamsDevice()).run(previous = synced).single { it.key == hausaufgabe }.formerKey)
+        assertTrue(synced.filter { it.key != hausaufgabe }.all { it.formerKey == null })
+    }
+
+    @Test
     fun `only ever presses tabs and assignment cards`() = runTest {
         val device = FakeTeamsDevice()
         machine(device).run(emptyList())
