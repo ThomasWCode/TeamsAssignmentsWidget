@@ -46,6 +46,13 @@ class ProviderRowsTest {
     private fun ProviderRows.Table.cell(row: Int, column: String): Any? = rows[row][columns.indexOf(column)]
 
     @Test
+    fun `work that took its Teams id is listed under the key it had, as other apps know it`() {
+        val former = Assignment.fallbackKey(physics.className, physics.title)
+        val table = ProviderRows.assignments(WidgetState(assignments = listOf(physics.copy(formerKey = former))), projection = null)
+        assertEquals(former, table.cell(0, Assignments.KEY))
+    }
+
+    @Test
     fun `an assignment row carries every field under its column`() {
         val table = ProviderRows.assignments(saved, projection = null)
 

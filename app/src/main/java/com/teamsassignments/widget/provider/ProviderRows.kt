@@ -20,8 +20,9 @@ internal object ProviderRows {
         Table(
             Assignments.COLUMNS,
             state.assignments.sortedWith(widgetOrder).map {
+                // By the key it was first given: one that took its Teams id later stays the same work.
                 arrayOf(
-                    it.key, it.title, it.className, it.description, it.dueText, it.dueAt, it.tab.name, it.detailReadAt, it.lastSyncedAt,
+                    it.formerKey ?: it.key, it.title, it.className, it.description, it.dueText, it.dueAt, it.tab.name, it.detailReadAt, it.lastSyncedAt,
                     it.attachments.joinToString("\n"), it.links.joinToString("\n"),
                 )
             },

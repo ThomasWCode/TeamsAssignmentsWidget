@@ -759,9 +759,13 @@ class TeamsObserverTest {
         with(keyed.assignments.single()) {
             assertEquals(physics, key)
             assertEquals("Particle Physics Test", title)
+            // The key it had, kept: other apps know it by that one.
+            assertEquals(Assignment.fallbackKey("12.2-PH3", "Particle Physics Test"), formerKey)
         }
         assertEquals(listOf("\"Particle Physics Test\" took its Teams id"), keyed.changes)
-        assertEquals(1, merge(TeamsObserver().see("detail_4c958b24"), keyed.assignments).assignments.size)
+        with(merge(TeamsObserver().see("detail_4c958b24"), keyed.assignments).assignments.single()) {
+            assertEquals(Assignment.fallbackKey("12.2-PH3", "Particle Physics Test"), formerKey)
+        }
     }
 
     @Test

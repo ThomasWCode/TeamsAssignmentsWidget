@@ -53,6 +53,15 @@ class ProviderCallsTest {
     }
 
     @Test
+    fun `work asked for by the key it had before its Teams id opens under its own`() {
+        val control = FakeControl()
+        val moved = listOf(saved.single().copy(formerKey = "h-0123456789abcdef"))
+
+        assertEquals(CallOutcome.Started, ProviderCalls.open(control, "h-0123456789abcdef", moved))
+        assertEquals(listOf("open 4c958b24"), control.started)
+    }
+
+    @Test
     fun `a key that isn't on the list opens nothing, whatever the service is doing`() {
         val control = FakeControl()
 

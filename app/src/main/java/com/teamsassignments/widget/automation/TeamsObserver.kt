@@ -461,6 +461,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                         links = earlier.links,
                         dueText = earlier.dueText,
                         detailReadAt = earlier.detailReadAt,
+                        formerKey = Assignment.formerKey(earlier, added.key),
                     )
                     changes += "\"${earlier.title}\" took its Teams id"
                 } else {
@@ -633,7 +634,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         }
 
         /** Whether [saved], kept without a GUID, is the assignment on [card]: same title, class and due time. */
-        private fun sameRow(saved: Assignment, card: ListCard, dueAt: Long?): Boolean =
+        internal fun sameRow(saved: Assignment, card: ListCard, dueAt: Long?): Boolean =
             TeamsScreens.sameTitle(card.title, saved.title) &&
                 (card.collapsed || classMatches(saved.className, card.className)) &&
                 dueAt != null && dueAt == saved.dueAt
