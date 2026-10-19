@@ -65,7 +65,7 @@ Apps signed with this app's key, such as [Decrastination](https://github.com/Tho
 | `call(root, "requestSync", null, null)` | Starts a sync, as ↻ does. The result has `started`, and `reason` when it didn't: `service_off` or `busy` |
 | `call(root, "open", key, null)` | Opens that assignment in Teams, as a row tap does. One more `reason`: `unknown_key` |
 
-Observers of either URI, or of the root `content://com.teamsassignments.widget.assignments`, hear of every change to the list and the sync status. Both calls take over the screen, so an app should only make them when you've just asked it to. Nothing the provider offers hands anything in or changes the list. What each column means is in [`AssignmentsContract.kt`](app/src/main/java/com/teamsassignments/widget/provider/AssignmentsContract.kt).
+An assignment's `key` never changes: work saved from its own screen before a list showed its card (under a key made from its class and title, `h-…`) keeps that key here after it takes its Teams id (0.5.1), so an app that reads the list by key sees the same work, not work handed in and new work set; `open` takes either. Observers of either URI, or of the root `content://com.teamsassignments.widget.assignments`, hear of every change to the list and the sync status. Both calls take over the screen, so an app should only make them when you've just asked it to. Nothing the provider offers hands anything in or changes the list. What each column means is in [`AssignmentsContract.kt`](app/src/main/java/com/teamsassignments/widget/provider/AssignmentsContract.kt).
 
 The key is in this public repository, so the permission keeps out apps from stores and other developers, not one deliberately signed with this key: install only APKs built from your own repositories.
 
