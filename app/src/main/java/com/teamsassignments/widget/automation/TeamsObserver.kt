@@ -388,6 +388,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
             // Work handed in before the list had shown it is remembered without its Teams id.
             val handedInUnkeyed = recentlyHandedIn.values.filterNotNull().filterNot { TeamsSelectors.CARD_ID.matches(it.key) }
             val ofClass = sighting.scope.className
+            val cards = sighting.cards.map { if (ofClass != null) it.copy(className = ofClass) else it }
             val out = saved.toMutableList()
             val changes = mutableListOf<String>()
             val handedIn = mutableListOf<String>()
@@ -431,8 +432,9 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                     }
                     continue
                 }
-                // A detail screen seen on its own may have saved it already, without its GUID.
-                val unkeyed = out.indexOfFirst { !TeamsSelectors.CARD_ID.matches(it.key) && sameRow(it, card, dueAt) }
+                // A detail screen seen on its own may have saved it already, without its GUID: found by its
+                // row, or by its title and class where its own screen's due time differs from the list's ([takenOver]).
+                val unkeyed = takenOver(card, dueAt, out.filterNot { TeamsSelectors.CARD_ID.matches(it.key) }, cards)?.let(out::indexOf) ?: -1
                 // Handed in lately, and still listed: a list Teams hasn't refreshed, unless its own
                 // screen has shown it open since, which is how it came to be saved again. Remembered
                 // without its Teams id, it is told by its title, class and due time instead.
@@ -461,6 +463,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
                         links = earlier.links,
                         dueText = earlier.dueText,
                         detailReadAt = earlier.detailReadAt,
+                        formerKey = Assignment.formerKey(earlier, added.key),
                     )
                     changes += "\"${earlier.title}\" took its Teams id"
                 } else {
@@ -633,7 +636,7 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
         }
 
         /** Whether [saved], kept without a GUID, is the assignment on [card]: same title, class and due time. */
-        private fun sameRow(saved: Assignment, card: ListCard, dueAt: Long?): Boolean =
+        internal fun sameRow(saved: Assignment, card: ListCard, dueAt: Long?): Boolean =
             TeamsScreens.sameTitle(card.title, saved.title) &&
                 (card.collapsed || classMatches(saved.className, card.className)) &&
                 dueAt != null && dueAt == saved.dueAt
@@ -654,6 +657,20 @@ class TeamsObserver(private val config: AutomationConfig = AutomationConfig()) {
 
         /** The same class, by name. "Further Maths" is not "Maths". */
         private fun classMatches(a: String, b: String): Boolean = a == b
+
+        /**
+         * The row of [unkeyed] (saved from their own screens before a list gave them a Teams id, none
+         * taken yet) that [card] takes over: the one of its title, class and due time ([sameRow]); else
+         * the one of its title and class where no other of the [listed] cards is of them too, as its own
+         * screen's due time and the list's can differ. Reading along and a sync both find it so.
+         */
+        internal fun takenOver(card: ListCard, dueAt: Long?, unkeyed: List<Assignment>, listed: List<ListCard>): Assignment? =
+            unkeyed.firstOrNull { sameRow(it, card, dueAt) }
+                ?: unkeyed.firstOrNull { saved -> named(saved, card) && listed.count { named(saved, it) } == 1 }
+
+        /** Whether [card] is of [saved]'s title and class (a collapsed card's class can carry a tag, so it isn't asked). */
+        private fun named(saved: Assignment, card: ListCard): Boolean =
+            TeamsScreens.sameTitle(card.title, saved.title) && (card.collapsed || classMatches(saved.className, card.className))
 
         /**
          * Whether two class names could be the same class: the same, or one ending in the other, as

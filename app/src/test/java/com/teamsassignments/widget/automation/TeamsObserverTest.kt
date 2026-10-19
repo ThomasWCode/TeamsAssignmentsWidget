@@ -759,9 +759,35 @@ class TeamsObserverTest {
         with(keyed.assignments.single()) {
             assertEquals(physics, key)
             assertEquals("Particle Physics Test", title)
+            // The key it had, kept: other apps know it by that one.
+            assertEquals(Assignment.fallbackKey("12.2-PH3", "Particle Physics Test"), formerKey)
         }
         assertEquals(listOf("\"Particle Physics Test\" took its Teams id"), keyed.changes)
-        assertEquals(1, merge(TeamsObserver().see("detail_4c958b24"), keyed.assignments).assignments.size)
+        with(merge(TeamsObserver().see("detail_4c958b24"), keyed.assignments).assignments.single()) {
+            assertEquals(Assignment.fallbackKey("12.2-PH3", "Particle Physics Test"), formerKey)
+        }
+    }
+
+    @Test
+    fun `a row from its own screen takes its Teams id from a list showing another due time, where no other card is of its name`() {
+        // Its own screen and the list can tell its due time differently: matched by time alone, the list's
+        // card was added beside it, and the next sync dropped the row, its key with it.
+        val fromDetail = merge(TeamsObserver().see("detail_4c958b24"), emptyList()).assignments
+        val later = Sighting.OnList(
+            Tab.Forthcoming,
+            listOf(
+                ListCard(
+                    id = physics, title = "Particle Physics Test", dueLine = "Due at 09:45", className = "12.2-PH3", tag = null,
+                    headerDate = "29 Sept", headerLabel = "Tomorrow", collapsed = false, bounds = IntRect.EMPTY,
+                ),
+            ),
+        )
+        val keyed = merge(later, fromDetail)
+        with(keyed.assignments.single()) {
+            assertEquals(physics, key)
+            assertEquals(Assignment.fallbackKey("12.2-PH3", "Particle Physics Test"), formerKey)
+        }
+        assertTrue("\"Particle Physics Test\" took its Teams id" in keyed.changes, keyed.changes.toString())
     }
 
     @Test

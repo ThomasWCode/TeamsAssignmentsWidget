@@ -38,6 +38,8 @@ class SyncStateMachine(
 
         val listed = collectLists(previous)
         val previousByKey = previous.associateBy { it.key }
+        // Saved from their own screens before a list gave them a Teams id: each taken over once, by its card.
+        val unkeyed = previous.filterNot { TeamsSelectors.CARD_ID.matches(it.key) }.toMutableList()
         // Start with the tab that is already open, to save a switch.
         val openTab = device.teamsRoot()?.let(TeamsScreens::selectedTab)
         val ordered = listed.sortedBy { if (it.tab == openTab) 0 else 1 }
@@ -48,10 +50,12 @@ class SyncStateMachine(
             checkAbort()
             val (tab, card) = item
             val listDueAt = parser.parseList(card.headerDate, card.headerLabel, card.dueLine, tab.toAssignmentTab())?.toEpochMilli()
-            val old = previousByKey[card.id]
+            // One saved from its own screen before a list gave it its Teams id is found by its row
+            // ([TeamsObserver.takenOver]), and takes the id, keeping the key it had as its former one.
+            val old = previousByKey[card.id] ?: TeamsObserver.takenOver(card, listDueAt, unkeyed, ordered.map { it.card })?.also { unkeyed.remove(it) }
             val assignment = if (!full && old != null && isFresh(old, card, listDueAt)) {
                 log("Kept saved details for \"${card.title}\"")
-                old.copy(tab = tab.toAssignmentTab(), listDueAt = listDueAt, lastSyncedAt = wallClock())
+                old.copy(key = card.id, formerKey = Assignment.formerKey(old, card.id), tab = tab.toAssignmentTab(), listDueAt = listDueAt, lastSyncedAt = wallClock())
             } else {
                 readDetail(tab, card, listDueAt, old)
             }
@@ -179,6 +183,7 @@ class SyncStateMachine(
                 else -> null
             },
             lastSyncedAt = wallClock(),
+            formerKey = Assignment.formerKey(old, card.id),
         )
     }
 
@@ -194,4 +199,5 @@ class SyncStateMachine(
      */
     private fun rowUnchanged(old: Assignment, card: ListCard, listDueAt: Long?): Boolean =
         old.title == card.title && (old.listDueAt ?: old.dueAt) == listDueAt
+
 }
