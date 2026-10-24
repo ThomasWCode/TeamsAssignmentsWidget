@@ -1,0 +1,27 @@
+# Runs the shared author check from ThomasWCode/author-check on every PR
+# change and every comment or review on a PR.
+name: author-check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  issue_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted, edited]
+  pull_request_review_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  statuses: write
+
+concurrency:
+  group: author-check-${{ github.event.pull_request.number || github.event.issue.number }}
+
+jobs:
+  check:
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    uses: ThomasWCode/author-check/.github/workflows/check.yml@main
