@@ -12,7 +12,11 @@ The official way to read assignments, the Microsoft Graph API, needs a school IT
 2. The *Teams Assignments sync* accessibility service opens Teams straight on Assignments. It reads the **Forthcoming** and **Past due** tabs (together, everything not handed in), bringing the end of a long list into view so Teams loads all of it, then briefly opens each new or changed assignment for its class, exact due time and instructions.
 3. It goes back to the home screen, and the widget shows the list.
 
-A progress pill shows while it works ("Syncing assignments 3/7 · Cancel"). A first sync takes a few seconds per assignment. After that, an assignment is only reopened if its row has changed or its details are more than three days old. Most refreshes are quick, and every few days one rereads everything. **Full resync** in the app rereads everything straight away.
+A progress pill shows while it works ("Syncing assignments 3/7 · Cancel"). A first sync takes a few seconds per assignment. After that, an assignment is only reopened if its row has changed or its details are more than a day old (three days for an automatic sync, one an app such as Decrastination starts without being asked just then: a teacher's edits to the instructions don't change the row, and a sync you asked for can take a few seconds longer). Most refreshes are quick. **Full resync** in the app rereads everything straight away.
+
+### Teams' notifications
+
+Optionally, with notification access (the setup checklist's last step), the app notes when Teams posts a notification about assignments: one whose title or text names an assignment ("New assignment …", "Assignments"). It keeps only when the last one came, offered to other apps as `noticed_at` (below), and its title in **Recent steps**; it never syncs by itself, nor touches the notification. Decrastination syncs soon after one. A chat message that names an assignment counts too, at the cost of a sync. Every Teams notification's channel, and whether it matched, goes to `adb logcat -s TeamsAutomation`, never its text, so the rule can be checked against Teams' real notices: none had been captured when it was written.
 
 Tapping a row opens Teams and taps that assignment's card for you. Cards are found by the assignment's own ID, so the right one opens even when several share a title.
 
@@ -50,7 +54,7 @@ Work falling due around the time you looked is left alone, since it may simply h
 
 - **Syncing and opening only press tabs and assignment cards.** They never press a button, and never *Hand in*, *Attach* or anything else that changes Teams. Taps go to the centre of a card's title, and are refused if a button, the notification shade or the keyboard covers that spot.
 - **Hand in is the one exception, and only when you ask.** Once you confirm on the widget, it presses the *Hand in* button in Teams' toolbar for that assignment, found by its ID, and nothing else: never *Undo hand in*, *Attach* or anything that changes your work.
-- It only acts when you tap ↻, a row or *Hand in*, or when an app signed with its key asks it to sync or open an assignment (see below). Otherwise it only reads, and only while Teams shows Assignments. It only receives events from Teams.
+- It only acts when you tap ↻, a row or *Hand in*, or when an app signed with its key asks it to sync or open an assignment (see below). Otherwise it only reads, and only while Teams shows Assignments. It only receives events from Teams, and, given notification access, reads only Teams' notifications.
 - Everything stays on the phone: a small JSON file in the app's private storage, with nothing backed up or sent anywhere. Apps signed with this app's key can read the list through a read-only provider; no other app can.
 - If a sync fails or you cancel it, the previous list stays and the widget says what happened.
 
@@ -61,11 +65,11 @@ Apps signed with this app's key, such as [Decrastination](https://github.com/Tho
 | URI or call | What it gives |
 |---|---|
 | `content://com.teamsassignments.widget.assignments/assignments` | One row per assignment not handed in, in the widget's order: `key`, `title`, `class_name`, `description`, `due_text`, `due_at`, `tab`, `detail_read_at`, `last_synced_at`, `attachments` (the reference materials' file names, one a line) and `links` (the web addresses its instructions link to, one a line) |
-| `content://com.teamsassignments.widget.assignments/state` | One row: `last_success_at`, `status`, `status_message`, `status_at`, `assignment_count`, `sync_service_enabled`, `lists_seen_at` (when both lists were last seen in full while you had Teams open) |
-| `call(root, "requestSync", null, null)` | Starts a sync, as ↻ does. The result has `started`, and `reason` when it didn't: `service_off` or `busy` |
+| `content://com.teamsassignments.widget.assignments/state` | One row: `last_success_at`, `status`, `status_message`, `status_at`, `assignment_count`, `sync_service_enabled`, `lists_seen_at` (when both lists were last seen in full while you had Teams open), `noticed_at` (when Teams last notified you of assignments, 0.6.0) |
+| `call(root, "requestSync", null, null)` | Starts a sync, as ↻ does. The result has `started`, and `reason` when it didn't: `service_off` or `busy`. With `"auto"` as the `arg`, an automatic sync, which rereads assignments' details after three days rather than one (0.6.0) |
 | `call(root, "open", key, null)` | Opens that assignment in Teams, as a row tap does. One more `reason`: `unknown_key` |
 
-An assignment's `key` never changes: work saved from its own screen before a list showed its card (under a key made from its class and title, `h-…`) keeps that key here after it takes its Teams id (0.5.1), so an app that reads the list by key sees the same work, not work handed in and new work set; `open` takes either. Observers of either URI, or of the root `content://com.teamsassignments.widget.assignments`, hear of every change to the list and the sync status. Both calls take over the screen, so an app should only make them when you've just asked it to. Nothing the provider offers hands anything in or changes the list. What each column means is in [`AssignmentsContract.kt`](app/src/main/java/com/teamsassignments/widget/provider/AssignmentsContract.kt).
+An assignment's `key` never changes: work saved from its own screen before a list showed its card (under a key made from its class and title, `h-…`) keeps that key here after it takes its Teams id (0.5.1), so an app that reads the list by key sees the same work, not work handed in and new work set; `open` takes either. A change to the list's rows is announced on the `assignments` URI and one to the state's row on `state` (0.6.0), both on the root `content://com.teamsassignments.widget.assignments` when the app's process starts; an observer of the root with descendants hears every one, and one of `assignments` alone isn't woken as a sync starts and ends. Both calls take over the screen, so an app should only make them when you've just asked it to, or at a moment you've agreed to. Nothing the provider offers hands anything in or changes the list. What each column means is in [`AssignmentsContract.kt`](app/src/main/java/com/teamsassignments/widget/provider/AssignmentsContract.kt).
 
 The key is in this public repository, so the permission keeps out apps from stores and other developers, not one deliberately signed with this key: install only APKs built from your own repositories.
 
@@ -84,6 +88,7 @@ Then open **Teams Assignments** and work through the checklist:
    - If the switch is **greyed out**, Android is blocking accessibility for an app installed from a file. Open *App info* → ⋮ → *Allow restricted settings*, then try again. Installing over `adb` avoids this.
 3. **Keep it running in the background.** Tap *Allow* for unrestricted battery. On Samsung, also add the app under *Settings* → *Battery* → *Background usage limits* → *Never sleeping apps*, or One UI may switch the service off.
 4. **Add the widget.** Tap *Add widget*, or long-press the home screen → *Widgets* → *Teams Assignments*. It's designed for 4×3 and resizes.
+5. **Optional: see Teams' assignment notifications.** *Notification access* → *Teams Assignments* → On (over adb: `adb shell cmd notification allow_listener com.teamsassignments.widget/.notices.TeamsNoticeListener`). See [Teams' notifications](#teams-notifications).
 
 Then tap **↻**, and leave the phone alone until it returns to the home screen.
 
@@ -131,6 +136,7 @@ app/src/main/java/com/teamsassignments/widget/
                TeamsAutomation + SyncStateMachine + NavigateStateMachine + HandInStateMachine
                (the workflows), TeamsObserver (reading while you use Teams),
                TeamsAutomationService and the Android glue (node snapshots, taps, overlay, dumper)
+  notices/     TeamsNotices (which Teams notifications are about assignments) and its listener
   widget/      The Glance widget, its receiver, and redraw scheduling
   ui/          Setup screen, the widget's invisible trampoline activities, and its hand-in confirmation
   provider/    The read-only provider for apps signed with this key, and its contract
@@ -158,7 +164,7 @@ The 1 October run, what it turned up, and the fixes that followed in 0.2.1, are 
 ## Known limitations
 
 - **Tied to the Teams app's layout and English (en-GB) wording.** An update to Teams can break syncing until `TeamsSelectors.kt` is updated.
-- **Takes over the screen while syncing** and while handing in. Syncing is manual only, and doesn't run while the phone is locked; browsing Assignments in Teams updates the list without taking over. The widget still redraws at midnight and as deadlines pass, from saved data, so "Today" and "Overdue" stay right.
+- **Takes over the screen while syncing** and while handing in. The widget syncs only when you or an app signed with its key asks (Decrastination does so on its own schedule and after Teams' assignment notifications), and doesn't run while the phone is locked; browsing Assignments in Teams updates the list without taking over. The widget still redraws at midnight and as deadlines pass, from saved data, so "Today" and "Overdue" stay right.
 - Assignments you've handed in, and anything older than Teams' *Past due* list, aren't shown.
 - **A class team is known by its name.** Teams shows nothing else on its own Assignments tab, so two class teams with the same name are taken for one there: seeing one's tabs in full can take the other's work as handed in. It's back at the next look at the app's own list (without its instructions until a sync). Kept on purpose: such names are rare, and the mistake mends itself.
 - **A hand-in undone on another device isn't noticed from a list for 12 hours**, as a list alone can't be told from one Teams hasn't refreshed. Opening the assignment in Teams, or a sync, brings it back. The same goes for work returned for revision within 12 hours of the widget seeing it handed in.
