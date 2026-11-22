@@ -35,6 +35,17 @@ class AssignmentStoreTest {
     }
 
     @Test
+    fun `the latest Teams notice about assignments is kept, across a restart`() = runTest {
+        val store = AssignmentStore(file, clock)
+        store.markNoticed(2_000)
+        // One delivered late, as Android does for those still showing when the listener binds.
+        store.markNoticed(1_000)
+        assertEquals(2_000, store.state.value.noticedAt)
+        store.markNoticed(3_000)
+        assertEquals(3_000, AssignmentStore(file, clock).state.value.noticedAt)
+    }
+
+    @Test
     fun `saved state survives a restart`() = runTest {
         AssignmentStore(file, clock).saveSuccess(listOf(physics))
 

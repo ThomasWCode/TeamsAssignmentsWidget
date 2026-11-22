@@ -76,6 +76,18 @@
                 android:resource="@xml/automation_service_config" />
         </service>
 
+        <!-- Notes Teams' notifications about assignments (notices/TeamsNoticeListener). Only the
+             system can bind it, once the user gives the app notification access. -->
+        <service
+            android:name=".notices.TeamsNoticeListener"
+            android:exported="true"
+            android:label="@string/notice_listener_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <receiver
             android:name=".widget.AssignmentsWidgetReceiver"
             android:exported="false"

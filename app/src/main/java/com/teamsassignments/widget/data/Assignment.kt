@@ -108,6 +108,11 @@ data class WidgetState(
      * Teams id and all (see TeamsObserver).
      */
     val handedInWork: List<Assignment> = emptyList(),
+    /**
+     * When Teams last posted a notification about assignments (see notices/TeamsNotices), in
+     * epoch milliseconds: work may have been set, changed or handed back since the list was read.
+     */
+    val noticedAt: Long? = null,
 ) {
     /** When the list was last known to be up to date: the later of [lastSuccessAt] and [listsSeenAt]. */
     val updatedAt: Long? get() = listOfNotNull(lastSuccessAt, listsSeenAt).maxOrNull()
