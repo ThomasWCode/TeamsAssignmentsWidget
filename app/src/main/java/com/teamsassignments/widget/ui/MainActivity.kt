@@ -229,9 +229,11 @@ private fun SetupCard(checks: SetupChecks, connected: Boolean) {
             title = "Optional: see Teams' assignment notifications",
             body = "With notification access, the app notes when Teams notifies you of an assignment, so an app " +
                 "that reads the list, such as Decrastination, can sync soon after. It reads Teams' notifications alone, " +
-                "keeps only when the last about assignments came, and never syncs by itself.",
+                "keeps when the last about assignments came and its title in Recent steps, and never syncs by itself.\n\n" +
+                "Switch greyed out? Open App info → ⋮ → Allow restricted settings, then try again.",
         ) {
             OutlinedButton(onClick = { openNoticeSettings(context) }) { Text("Notification access") }
+            TextButton(onClick = { context.startActivity(appInfoIntent(context)) }) { Text("App info") }
         }
     }
 }

@@ -10,9 +10,10 @@ package com.teamsassignments.widget.provider
  * - `content://com.teamsassignments.widget.assignments/state`: one row, the [State] columns.
  * - A change to the assignments' rows is announced on the assignments URI, and a change to the
  *   state's row (the sync's progress among them) on the state URI; both on the authority's root
- *   whenever this app's process starts. Observers of the root with descendants hear every one, so
- *   an app that only needs the list watches the assignments URI and isn't woken by each step of a
- *   sync (0.6.0; before, every change was announced on the root alone).
+ *   whenever this app's process starts. An observer of the root must register with
+ *   `notifyForDescendants = true` to hear them all: without it, it hears only the one at the start.
+ *   An app that only needs the list watches the assignments URI and isn't woken as a sync starts
+ *   (0.6.0; before, every change was announced on the root alone).
  * - [METHOD_REQUEST_SYNC] and [METHOD_OPEN] through `ContentResolver.call` on the root URI.
  *
  * Every entry point needs [PERMISSION]. Queries and calls block while this app's process starts
