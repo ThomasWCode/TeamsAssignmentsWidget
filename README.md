@@ -157,9 +157,10 @@ scripts/       derive_fixtures.py: builds the edge-case fixtures from the captur
 - work handed in on another device: taken off once both open lists have been seen close together (and not on one list alone, or on two seen more than 10 minutes apart), taken off by a row tap or a hand-in that finds it on neither, and brought back once the hand-in is undone;
 - a sync with seven overdue assignments, which Teams pages: its "load more" placeholder brought into view, then every card read (8 Oct, 0.3.1; see [Paged lists](docs/teams-ui-notes.md#paged-lists-031-on-the-phone-8-oct));
 - reading along on 0.5.0: both lists seen in full moving *Updated* on without a sync, every row keeping its instructions, and a class team's own Assignments tab read without touching other classes' work (17 Oct; see [Class teams, filters and empty tabs](docs/teams-ui-notes.md#class-teams-filters-and-empty-tabs-17-oct));
-- the provider read by Decrastination, signed with the same key, and refused to `adb shell`; its sync and open calls both starting (8 Oct, 0.3.0).
+- the provider read by Decrastination, signed with the same key, and refused to `adb shell`; its sync and open calls both starting (8 Oct, 0.3.0);
+- 0.6.0 with Decrastination 6.13.0 (22 Nov): notification access given from the setup step, the listener enabled; ↻ as a sync you asked for, rereading the five assignments whose details were over a day old (27 s), and an automatic sync asked for with `"auto"`, keeping every one's (9 s); Decrastination reading the list within a second of each sync's end.
 
-The 1 October run, what it turned up, and the fixes that followed in 0.2.1, are under [Deferred live tests](docs/teams-ui-notes.md#deferred-live-tests). **Not checked:** work opened from a Teams notification, and the Hand in pill's icon form (below 250 dp, narrower than this phone's launcher allows).
+The 1 October run, what it turned up, and the fixes that followed in 0.2.1, are under [Deferred live tests](docs/teams-ui-notes.md#deferred-live-tests). **Not checked:** work opened from a Teams notification, a real Teams notification about an assignment reaching the notice listener (none came that day), and the Hand in pill's icon form (below 250 dp, narrower than this phone's launcher allows).
 
 ## Known limitations
 
