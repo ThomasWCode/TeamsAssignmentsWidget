@@ -8,8 +8,11 @@ package com.teamsassignments.widget.provider
  * - `content://com.teamsassignments.widget.assignments/assignments`: one row per assignment, in
  *   the widget's order, with the [Assignments] columns.
  * - `content://com.teamsassignments.widget.assignments/state`: one row, the [State] columns.
- * - Observers of either, or of the authority's root, hear of every change to the list or the sync
- *   status, and once whenever this app's process starts.
+ * - A change to the assignments' rows is announced on the assignments URI, and a change to the
+ *   state's row (the sync's progress among them) on the state URI; both on the authority's root
+ *   whenever this app's process starts. Observers of the root with descendants hear every one, so
+ *   an app that only needs the list watches the assignments URI and isn't woken by each step of a
+ *   sync (0.6.0; before, every change was announced on the root alone).
  * - [METHOD_REQUEST_SYNC] and [METHOD_OPEN] through `ContentResolver.call` on the root URI.
  *
  * Every entry point needs [PERMISSION]. Queries and calls block while this app's process starts
@@ -87,14 +90,30 @@ object AssignmentsContract {
          */
         const val LISTS_SEEN_AT = "lists_seen_at"
 
-        val COLUMNS = arrayOf(LAST_SUCCESS_AT, STATUS, STATUS_MESSAGE, STATUS_AT, ASSIGNMENT_COUNT, SYNC_SERVICE_ENABLED, LISTS_SEEN_AT)
+        /**
+         * When Teams last posted a notification about assignments, in epoch milliseconds, or null
+         * if none has been seen (or the app isn't allowed to see Teams' notifications). Later than
+         * the list's freshness, work may have been set, changed or handed back since (0.6.0).
+         */
+        const val NOTICED_AT = "noticed_at"
+
+        val COLUMNS = arrayOf(LAST_SUCCESS_AT, STATUS, STATUS_MESSAGE, STATUS_AT, ASSIGNMENT_COUNT, SYNC_SERVICE_ENABLED, LISTS_SEEN_AT, NOTICED_AT)
     }
 
     /**
      * Syncs, as the widget's ↻ does. It takes over the screen until it returns to the home screen,
-     * so ask only when the user has just asked for it.
+     * so ask only when the user has just asked for it, or at a moment they've agreed to. With the
+     * call's `arg` [SYNC_AUTOMATIC], it's an automatic sync, which reads less ([SYNC_AUTOMATIC]);
+     * any other `arg`, or none, is one the user asked for.
      */
     const val METHOD_REQUEST_SYNC = "requestSync"
+
+    /**
+     * [METHOD_REQUEST_SYNC]'s `arg` for a sync the user didn't ask for just now. It rereads an
+     * assignment's own screen once its details are three days old, where one the user asks for
+     * rereads them after a day: the user is waiting on that one, and doesn't mind it taking longer.
+     */
+    const val SYNC_AUTOMATIC = "auto"
 
     /**
      * Opens the assignment whose [Assignments.KEY] is the call's `arg` in Teams, as a widget row tap

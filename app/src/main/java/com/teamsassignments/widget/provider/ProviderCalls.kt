@@ -10,8 +10,8 @@ internal interface SyncControl {
     /** Whether a sync, an opening or a hand-in is driving Teams. */
     val isBusy: Boolean
 
-    /** Starts a sync; false if one is already running. */
-    fun startSync(): Boolean
+    /** Starts a sync, [automatic] or one the user asked for; false if one is already running. */
+    fun startSync(automatic: Boolean): Boolean
 
     /** Opens the saved assignment with [key]; false if busy or unknown. */
     fun openAssignment(key: String): Boolean
@@ -28,9 +28,10 @@ internal enum class CallOutcome(val started: Boolean, val reason: String?) {
 /** The two calls, given the service if it's running ([control] is null when it's switched off). */
 internal object ProviderCalls {
 
-    fun requestSync(control: SyncControl?): CallOutcome = when {
+    /** [arg] is the call's: [AssignmentsContract.SYNC_AUTOMATIC] for an automatic sync, anything else one the user asked for. */
+    fun requestSync(control: SyncControl?, arg: String? = null): CallOutcome = when {
         control == null -> CallOutcome.ServiceOff
-        control.startSync() -> CallOutcome.Started
+        control.startSync(automatic = arg == AssignmentsContract.SYNC_AUTOMATIC) -> CallOutcome.Started
         else -> CallOutcome.Busy
     }
 

@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.os.Looper
 import com.teamsassignments.widget.automation.TeamsAutomationService
 import com.teamsassignments.widget.data.AssignmentStore
+import com.teamsassignments.widget.data.WidgetState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,10 +31,26 @@ class AssignmentsProvider : ContentProvider() {
     override fun onCreate(): Boolean {
         val context = context ?: return false
         val root = Uri.Builder().scheme("content").authority(AssignmentsContract.AUTHORITY).build()
+        val uris = mapOf(
+            Path.Assignments to root.buildUpon().appendPath(AssignmentsContract.Assignments.PATH).build(),
+            Path.State to root.buildUpon().appendPath(AssignmentsContract.State.PATH).build(),
+        )
         // Every change to the list or the sync status goes through the store's state, so observers
-        // hear of each one. The current state is sent too: nothing can slip by while this starts.
+        // hear of each one, on the URI whose rows it changed (ProviderRows.changed). The current
+        // state is sent too, on the root: nothing can slip by while this starts.
         scope.launch {
-            AssignmentStore.get(context).state.collect { context.contentResolver.notifyChange(root, null, 0) }
+            var before: WidgetState? = null
+            AssignmentStore.get(context).state.collect { state ->
+                val last = before
+                before = state
+                if (last == null) {
+                    context.contentResolver.notifyChange(root, null, 0)
+                    return@collect
+                }
+                val changed = ProviderRows.changed(last, state)
+                if (changed.assignments) context.contentResolver.notifyChange(uris.getValue(Path.Assignments), null, 0)
+                if (changed.state) context.contentResolver.notifyChange(uris.getValue(Path.State), null, 0)
+            }
         }
         return true
     }
@@ -76,7 +93,7 @@ class AssignmentsProvider : ContentProvider() {
             if (method == AssignmentsContract.METHOD_OPEN) {
                 ProviderCalls.open(control, arg, AssignmentStore.get(context).state.value.assignments)
             } else {
-                ProviderCalls.requestSync(control)
+                ProviderCalls.requestSync(control, arg)
             }
         }
         return Bundle().apply {
@@ -113,7 +130,7 @@ class AssignmentsProvider : ContentProvider() {
 
     private class ServiceControl(private val service: TeamsAutomationService) : SyncControl {
         override val isBusy: Boolean get() = service.isBusy
-        override fun startSync(): Boolean = service.startSync()
+        override fun startSync(automatic: Boolean): Boolean = service.startSync(automatic = automatic)
         override fun openAssignment(key: String): Boolean = service.openAssignment(key)
     }
 

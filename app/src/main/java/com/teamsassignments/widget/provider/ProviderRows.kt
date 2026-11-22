@@ -35,9 +35,27 @@ internal object ProviderRows {
             is SyncStatus.Failed -> Triple("failed", s.reason, s.at)
             is SyncStatus.Stopped -> Triple("stopped", s.summary, s.at)
         }
-        val row = arrayOf<Any?>(state.lastSuccessAt, status, message, at, state.assignments.size, if (syncServiceEnabled) 1 else 0, state.listsSeenAt)
+        val row = arrayOf<Any?>(
+            state.lastSuccessAt, status, message, at, state.assignments.size, if (syncServiceEnabled) 1 else 0, state.listsSeenAt, state.noticedAt,
+        )
         return Table(State.COLUMNS, listOf(row)).project(projection)
     }
+
+    /** Which of the two tables a change of state alters, by their rows: what's announced, and on which URI. */
+    data class Changed(val assignments: Boolean, val state: Boolean)
+
+    /**
+     * Which tables' rows differ between [before] and [after]. What they don't show (class colours,
+     * work handed in lately) changes neither. Whether the sync service is on isn't part of the
+     * state, so it's left out: observers aren't told of it ([State.SYNC_SERVICE_ENABLED]).
+     */
+    fun changed(before: WidgetState, after: WidgetState): Changed = Changed(
+        assignments = !rowsEqual(assignments(before, null), assignments(after, null)),
+        state = !rowsEqual(state(before, false, null), state(after, false, null)),
+    )
+
+    private fun rowsEqual(a: Table, b: Table): Boolean =
+        a.rows.size == b.rows.size && a.rows.indices.all { a.rows[it].contentEquals(b.rows[it]) }
 
     /** Just [projection]'s columns, in its order; all of them when it's null. Unknown names are refused. */
     private fun Table.project(projection: Array<String>?): Table {
