@@ -12,7 +12,8 @@ import java.util.concurrent.TimeUnit
  * 2. read the Forthcoming and Past due lists (both mean "not handed in");
  * 3. open each assignment to read its class, exact due time and instructions, then go Back.
  *    Details read in the last [detailReuseMs] are reused while the row is unchanged, which keeps
- *    a routine refresh to a few seconds. A full sync re-reads everything.
+ *    a routine refresh to a few seconds: [DETAIL_REUSE_MS] for an automatic sync, and the shorter
+ *    [MANUAL_DETAIL_REUSE_MS] for one the user asked for. A full sync re-reads everything.
  *
  * A row that won't open is retried once, then kept with its list data. Anything that ends the
  * whole run throws [SyncAbort], and the caller keeps the previous list.
@@ -26,7 +27,7 @@ class SyncStateMachine(
     now: () -> Long,
     log: (String) -> Unit = {},
     isCancelled: () -> Boolean = { false },
-    private val detailReuseMs: Long = TimeUnit.DAYS.toMillis(3),
+    private val detailReuseMs: Long = DETAIL_REUSE_MS,
 ) : TeamsAutomation(device, config, now, log, isCancelled) {
 
     private data class Listed(val tab: Tab, val card: ListCard)
@@ -200,4 +201,14 @@ class SyncStateMachine(
     private fun rowUnchanged(old: Assignment, card: ListCard, listDueAt: Long?): Boolean =
         old.title == card.title && (old.listDueAt ?: old.dueAt) == listDueAt
 
+    companion object {
+        /** How long an automatic sync reuses an assignment's details while its row is unchanged. */
+        val DETAIL_REUSE_MS: Long = TimeUnit.DAYS.toMillis(3)
+
+        /**
+         * The same for a sync the user asked for: a teacher's edits to the instructions don't
+         * change the row, and the user is waiting on this one, so a few more seconds are worth it.
+         */
+        val MANUAL_DETAIL_REUSE_MS: Long = TimeUnit.DAYS.toMillis(1)
+    }
 }
