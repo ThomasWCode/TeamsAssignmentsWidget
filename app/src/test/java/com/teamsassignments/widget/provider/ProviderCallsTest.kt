@@ -15,9 +15,9 @@ class ProviderCallsTest {
     ) : SyncControl {
         val started = mutableListOf<String>()
 
-        override fun startSync(): Boolean {
+        override fun startSync(automatic: Boolean): Boolean {
             if (isBusy) return false
-            started += "sync"
+            started += if (automatic) "automatic sync" else "sync"
             return true
         }
 
@@ -36,6 +36,17 @@ class ProviderCallsTest {
 
         assertEquals(CallOutcome.Started, ProviderCalls.requestSync(control))
         assertEquals(listOf("sync"), control.started)
+    }
+
+    @Test
+    fun `a sync is automatic only when asked for as one`() {
+        val control = FakeControl()
+
+        ProviderCalls.requestSync(control, AssignmentsContract.SYNC_AUTOMATIC)
+        // An older app's call, with no arg, or any other: one the user asked for.
+        ProviderCalls.requestSync(control, null)
+        ProviderCalls.requestSync(control, "manual")
+        assertEquals(listOf("automatic sync", "sync", "sync"), control.started)
     }
 
     @Test

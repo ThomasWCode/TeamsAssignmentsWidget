@@ -79,6 +79,14 @@ class AssignmentStore(
         )
     }
 
+    /**
+     * Notes a Teams notification about assignments posted [at] (see [WidgetState.noticedAt]). The
+     * latest stands: Android can deliver an older one late, when it posts the ones already showing.
+     */
+    suspend fun markNoticed(at: Long) = update { state ->
+        state.copy(noticedAt = maxOf(at, state.noticedAt ?: at))
+    }
+
     /** The keys handed in over the last [HANDED_IN_MEMORY_MS] (see [WidgetState.handedIn]). */
     fun recentlyHandedIn(): Set<String> = recent(state.value.handedIn, clock.millis()).keys
 

@@ -38,6 +38,7 @@ class SyncStateMachineTest {
         device: FakeTeamsDevice,
         config: AutomationConfig = AutomationConfig(),
         isCancelled: () -> Boolean = { false },
+        detailReuseMs: Long = SyncStateMachine.DETAIL_REUSE_MS,
     ) = SyncStateMachine(
         device = device,
         parser = parser,
@@ -47,6 +48,7 @@ class SyncStateMachineTest {
         now = { testScheduler.currentTime },
         log = { log += it },
         isCancelled = isCancelled,
+        detailReuseMs = detailReuseMs,
     )
 
     private fun millis(utc: String) = Instant.parse(utc).toEpochMilli()
@@ -191,6 +193,25 @@ class SyncStateMachineTest {
         val device = FakeTeamsDevice()
         machine(device).run(previous = stale)
         assertEquals(10, device.opened.size)
+    }
+
+    @Test
+    fun `a sync the user asked for rereads details a day old, which an automatic one keeps`() = runTest {
+        val dayOld = machine(FakeTeamsDevice()).run(emptyList())
+            .map { it.copy(detailReadAt = clock.millis() - TimeUnit.HOURS.toMillis(30)) }
+        val automatic = FakeTeamsDevice()
+        machine(automatic).run(previous = dayOld)
+        assertTrue(automatic.opened.isEmpty(), automatic.opened.toString())
+
+        val manual = FakeTeamsDevice()
+        machine(manual, detailReuseMs = SyncStateMachine.MANUAL_DETAIL_REUSE_MS).run(previous = dayOld)
+        assertEquals(10, manual.opened.size)
+
+        // Read within the day: kept by either.
+        val fresh = dayOld.map { it.copy(detailReadAt = clock.millis() - TimeUnit.HOURS.toMillis(20)) }
+        val manualAgain = FakeTeamsDevice()
+        machine(manualAgain, detailReuseMs = SyncStateMachine.MANUAL_DETAIL_REUSE_MS).run(previous = fresh)
+        assertTrue(manualAgain.opened.isEmpty(), manualAgain.opened.toString())
     }
 
     @Test

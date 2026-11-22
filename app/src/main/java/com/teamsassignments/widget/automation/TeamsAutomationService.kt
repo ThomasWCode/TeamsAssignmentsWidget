@@ -115,16 +115,18 @@ class TeamsAutomationService : AccessibilityService() {
     }
 
     /**
-     * Starts a sync unless one is already running. [full] rereads every assignment's details.
-     * Afterwards the phone goes to [returnTo] if given, otherwise to the home screen and its widget.
+     * Starts a sync unless one is already running. [full] rereads every assignment's details; an
+     * [automatic] one, which the user didn't just ask for, rereads them less often (see
+     * [SyncStateMachine.MANUAL_DETAIL_REUSE_MS]). Afterwards the phone goes to [returnTo] if given,
+     * otherwise to the home screen and its widget.
      */
-    fun startSync(full: Boolean = false, returnTo: Intent? = null): Boolean {
+    fun startSync(full: Boolean = false, returnTo: Intent? = null, automatic: Boolean = false): Boolean {
         if (isBusy) return false
         cancelRequested = false
         dumper.disarm()
         stopWatching()
         job = scope.launch {
-            runSync(full, returnTo)
+            runSync(full, returnTo, automatic)
             lookAfterwards()
         }
         return true
@@ -206,8 +208,14 @@ class TeamsAutomationService : AccessibilityService() {
 
     fun disarmDumper() = dumper.disarm()
 
-    private suspend fun runSync(full: Boolean, returnTo: Intent?) {
-        log.add(if (full) "── Full sync ──" else "── Sync ──")
+    private suspend fun runSync(full: Boolean, returnTo: Intent?, automatic: Boolean) {
+        log.add(
+            when {
+                full -> "── Full sync ──"
+                automatic -> "── Automatic sync ──"
+                else -> "── Sync ──"
+            },
+        )
         banner.show("Syncing assignments…", "Cancel", showSpinner = true) { cancelRequested = true }
         store.markRunning(0, 0)
         WidgetUpdater.update(this)
@@ -227,6 +235,7 @@ class TeamsAutomationService : AccessibilityService() {
                 now = SystemClock::elapsedRealtime,
                 log = log::add,
                 isCancelled = { cancelRequested },
+                detailReuseMs = if (automatic) SyncStateMachine.DETAIL_REUSE_MS else SyncStateMachine.MANUAL_DETAIL_REUSE_MS,
             )
             // Off the main thread: every step reads Teams' whole accessibility tree over IPC.
             val result = withContext(Dispatchers.Default) { machine.run(store.state.value.assignments, full) }

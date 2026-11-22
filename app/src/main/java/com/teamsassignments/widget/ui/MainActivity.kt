@@ -82,6 +82,7 @@ import com.teamsassignments.widget.data.SyncLog
 import com.teamsassignments.widget.data.SyncStatus
 import com.teamsassignments.widget.data.WidgetState
 import com.teamsassignments.widget.data.groupIntoSections
+import com.teamsassignments.widget.notices.TeamsNoticeListener
 import com.teamsassignments.widget.widget.AssignmentsWidgetReceiver
 import kotlinx.coroutines.delay
 import java.io.File
@@ -121,6 +122,7 @@ private data class SetupChecks(
     val serviceEnabled: Boolean,
     val batteryUnrestricted: Boolean,
     val widgetPlaced: Boolean,
+    val noticesEnabled: Boolean,
 ) {
     companion object {
         fun read(context: Context) = SetupChecks(
@@ -129,6 +131,7 @@ private data class SetupChecks(
             batteryUnrestricted = context.getSystemService(PowerManager::class.java)
                 .isIgnoringBatteryOptimizations(context.packageName),
             widgetPlaced = AppWidgetManager.getInstance(context).getAppWidgetIds(widgetProvider(context)).isNotEmpty(),
+            noticesEnabled = TeamsNoticeListener.isEnabled(context),
         )
     }
 }
@@ -220,6 +223,19 @@ private fun SetupCard(checks: SetupChecks, connected: Boolean) {
             body = "Tap Add widget, or long-press the home screen and find Teams Assignments under Widgets.",
         ) {
             Button(onClick = { requestPinWidget(context) }) { Text("Add widget") }
+        }
+        Step(
+            done = checks.noticesEnabled,
+            title = "Optional: see Teams' assignment notifications",
+            body = "With notification access, the app notes when Teams notifies you of an assignment, so an app " +
+                "that reads the list, such as Decrastination, can sync soon after. It reads Teams' notifications alone, " +
+                "keeps when the last about assignments came and its title in Recent steps, and never syncs by itself. " +
+                "It also keeps the texts of Teams' last 300 notifications, from the last 30 days, in its own storage on this phone, " +
+                "for checking which are about assignments.\n\n" +
+                "Switch greyed out? Open App info → ⋮ → Allow restricted settings, then try again.",
+        ) {
+            OutlinedButton(onClick = { openNoticeSettings(context) }) { Text("Notification access") }
+            TextButton(onClick = { context.startActivity(appInfoIntent(context)) }) { Text("App info") }
         }
     }
 }
@@ -425,6 +441,18 @@ private fun openServiceSettings(context: Context) {
         if (runCatching { context.startActivity(details) }.isSuccess) return
     }
     context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+}
+
+/** The listener's own switch where Android has one (11+), else the list of apps with notification access. */
+private fun openNoticeSettings(context: Context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val details = Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
+            Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+            TeamsNoticeListener.component(context).flattenToString(),
+        )
+        if (runCatching { context.startActivity(details) }.isSuccess) return
+    }
+    context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
 }
 
 private fun appInfoIntent(context: Context) =

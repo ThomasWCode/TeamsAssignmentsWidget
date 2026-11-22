@@ -165,6 +165,33 @@ class ProviderRowsTest {
     }
 
     @Test
+    fun `the state row says when Teams last notified of assignments`() {
+        assertNull(ProviderRows.state(saved, syncServiceEnabled = true, projection = null).cell(0, State.NOTICED_AT))
+        assertEquals(
+            1_759_000_400_000,
+            ProviderRows.state(saved.copy(noticedAt = 1_759_000_400_000), syncServiceEnabled = true, projection = null).cell(0, State.NOTICED_AT),
+        )
+    }
+
+    @Test
+    fun `a change is announced for the table whose rows it changes`() {
+        // A sync starting: the state alone, so an app watching the list isn't woken by it. Its
+        // progress isn't on either table's rows, so each step announces nothing.
+        val running = saved.copy(status = SyncStatus.Running(done = 1, total = 7, startedAt = 10L))
+        assertEquals(ProviderRows.Changed(assignments = false, state = true), ProviderRows.changed(saved, running))
+        assertEquals(ProviderRows.Changed(assignments = false, state = false), ProviderRows.changed(running, running.copy(status = SyncStatus.Running(2, 7, 10L))))
+        assertEquals(ProviderRows.Changed(assignments = false, state = true), ProviderRows.changed(saved, saved.copy(noticedAt = 5L)))
+        // Work handed in: the list, and the count on the state's row.
+        assertEquals(ProviderRows.Changed(assignments = true, state = true), ProviderRows.changed(saved, saved.copy(assignments = listOf(physics))))
+        // An instruction read, the count unchanged: the list alone.
+        val read = saved.copy(assignments = listOf(physics, german.copy(description = "Learn page 12.")))
+        assertEquals(ProviderRows.Changed(assignments = true, state = false), ProviderRows.changed(saved, read))
+        // What neither table shows: nothing.
+        val unseen = saved.copy(classColors = mapOf("12.2-PH3" to 3), handedIn = mapOf("x" to 1L))
+        assertEquals(ProviderRows.Changed(assignments = false, state = false), ProviderRows.changed(saved, unseen))
+    }
+
+    @Test
     fun `no sync yet leaves the last success null`() {
         val table = ProviderRows.state(WidgetState(), syncServiceEnabled = false, projection = arrayOf(State.LAST_SUCCESS_AT, State.ASSIGNMENT_COUNT))
 

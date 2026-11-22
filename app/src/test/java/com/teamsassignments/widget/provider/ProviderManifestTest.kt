@@ -37,6 +37,13 @@ class ProviderManifestTest {
         assertEquals("", provider.android("readPermission"), "a narrower readPermission would override it")
     }
 
+    @Test
+    fun `only the system can bind the notice listener`() {
+        val listener = elements("service").single { it.android("name") == ".notices.TeamsNoticeListener" }
+
+        assertEquals("android.permission.BIND_NOTIFICATION_LISTENER_SERVICE", listener.android("permission"))
+    }
+
     private companion object {
         const val ANDROID = "http://schemas.android.com/apk/res/android"
     }
