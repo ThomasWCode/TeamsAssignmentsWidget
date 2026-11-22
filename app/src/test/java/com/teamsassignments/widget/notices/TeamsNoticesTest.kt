@@ -15,6 +15,7 @@ class TeamsNoticesTest {
         assertTrue(TeamsNotices.aboutAssignments(Notice("c", bigText = "Your teacher returned the ASSIGNMENT with feedback")))
         assertTrue(TeamsNotices.aboutAssignments(Notice("c", summaryText = "2 assignments")))
         assertTrue(TeamsNotices.aboutAssignments(Notice("c", conversationTitle = "Assignments")))
+        assertTrue(TeamsNotices.aboutAssignments(Notice("c", title = "Teams", lines = "A friend: hi\nNew assignment: Essay")))
     }
 
     @Test

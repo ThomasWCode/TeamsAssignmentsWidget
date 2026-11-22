@@ -5,8 +5,8 @@ package com.teamsassignments.widget.notices
  * the list may not show yet. The wording is matched, not the channel: Teams makes its channels'
  * ids at run time, and they say nothing of the app behind a notice. Assignments' notices are taken
  * to name the word ("New assignment", "Assignments" as the app's name); none had been captured on
- * the phone when this was written, so [TeamsNoticeListener] logs each Teams notice's channel and
- * whether it matched, for the rule to be checked against the first real one. A chat message that
+ * the phone when this was written, so [TeamsNoticeListener] keeps every Teams notice's texts and
+ * whether it matched ([NoticeLog]), for the rule to be checked against real ones. A chat message that
  * names an assignment costs a sync at most, and the app that asks for syncs paces them.
  *
  * Pure, so it is tested on the JVM; [TeamsNoticeListener] hands it each notification's text.
@@ -22,6 +22,8 @@ object TeamsNotices {
         val subText: String = "",
         val summaryText: String = "",
         val conversationTitle: String = "",
+        /** An inbox-style notification's lines, one a line. */
+        val lines: String = "",
         /** A group's summary repeats the notifications under it, so it is never one of its own. */
         val groupSummary: Boolean = false,
     )
@@ -31,7 +33,7 @@ object TeamsNotices {
     /** Whether [notice] is about assignments. */
     fun aboutAssignments(notice: Notice): Boolean {
         if (notice.groupSummary) return false
-        return listOf(notice.title, notice.text, notice.bigText, notice.subText, notice.summaryText, notice.conversationTitle)
+        return listOf(notice.title, notice.text, notice.bigText, notice.subText, notice.summaryText, notice.conversationTitle, notice.lines)
             .any { ASSIGNMENT.containsMatchIn(it) }
     }
 }

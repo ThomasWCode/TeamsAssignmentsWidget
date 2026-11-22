@@ -20,9 +20,9 @@ import kotlinx.coroutines.launch
 /**
  * Notes when Teams posts a notification about assignments ([TeamsNotices]), so an app reading the
  * list (Decrastination) can sync soon after, rather than at its next timed sync. It reads Teams'
- * notifications alone, keeps nothing of them but the time of the last that matched (and its title
- * in the log), and never syncs or touches a notification itself. Optional: without notification
- * access, everything else works as before.
+ * notifications alone; it keeps the time of the last that matched (and its title in the log), and
+ * every one's texts in [NoticeLog], for checking the rule; it never syncs or touches a notification
+ * itself. Optional: without notification access, everything else works as before.
  */
 class TeamsNoticeListener : NotificationListenerService() {
 
@@ -44,8 +44,11 @@ class TeamsNoticeListener : NotificationListenerService() {
         if (sbn.packageName != TeamsSelectors.TEAMS_PACKAGE) return
         val notice = notice(sbn.notification)
         val matched = TeamsNotices.aboutAssignments(notice)
-        // The channel alone, never the text: for checking the rule against Teams' real notices.
+        // The channel alone, never the text, in logcat; the texts go to the app's own file.
         Log.i(SyncLog.TAG, "Teams notice on ${notice.channelId}: ${if (matched) "about assignments" else "not about assignments"}")
+        scope.launch {
+            NoticeLog.get(this@TeamsNoticeListener).add(entry(sbn, notice, matched), System.currentTimeMillis())
+        }
         if (!matched) return
         scope.launch {
             val store = AssignmentStore.get(this@TeamsNoticeListener)
@@ -71,9 +74,25 @@ class TeamsNoticeListener : NotificationListenerService() {
             subText = text(Notification.EXTRA_SUB_TEXT),
             summaryText = text(Notification.EXTRA_SUMMARY_TEXT),
             conversationTitle = text(Notification.EXTRA_CONVERSATION_TITLE),
+            lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.joinToString("\n").orEmpty(),
             groupSummary = notification.flags and Notification.FLAG_GROUP_SUMMARY != 0,
         )
     }
+
+    private fun entry(sbn: StatusBarNotification, notice: TeamsNotices.Notice, matched: Boolean) = NoticeLog.Entry(
+        postedAt = sbn.postTime,
+        key = sbn.key,
+        channelId = notice.channelId,
+        title = notice.title,
+        text = notice.text,
+        bigText = notice.bigText,
+        subText = notice.subText,
+        summaryText = notice.summaryText,
+        conversationTitle = notice.conversationTitle,
+        lines = notice.lines,
+        groupSummary = notice.groupSummary,
+        matched = matched,
+    )
 
     companion object {
         /** Whether the user has given this app access to notifications (Settings → Notification access). */
