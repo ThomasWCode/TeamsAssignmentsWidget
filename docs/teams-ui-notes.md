@@ -272,6 +272,16 @@ What 0.5.0 does with these:
 - **An empty tab is whole**: no list, nothing loading, and the words for that tab (`TeamsSelectors.emptyList`).
 - **Forthcoming in full is enough for work due later**, more than 2 minutes after it was seen: it can't have moved to Past due, so only a hand-in (or the teacher) took it off.
 
+## Teams' tasks and the Recents screen (28 Nov)
+
+Probed over adb with `dumpsys activity`, for 0.7.0's closing of Teams after a sync (Teams for Android of that day, One UI 9):
+
+- **The Assignments link always ends in a fresh task of Teams' own.** `SplashActivity` (standard launch mode) passes it through `AuthenticatedProcessDeeplinkActivity` to `CustomTabsShellActivity`, which it starts with `NEW_TASK|CLEAR_TOP` (`0x14000000`). It goes into a new task with Teams' affinity, shown as `10454:com.microsoft.teams` since Android ties affinities to their app. So another app can't host it in its own task, and `FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS` on the link only hides Splash's short task; Teams' real task is in Recents either way. `CustomTabsShellActivity` isn't exported, so it can't be started directly.
+- **Teams removes its older task itself** when the link arrives: one open on Teams' home screen was gone, and so was the screen it showed. The screen in front before a sync can't be brought back, whatever the app does.
+- **Back at the Assignments root doesn't leave Teams**: it opens Teams' home screen (`MainActivity`) in yet another new task.
+- **Usage stats can't tell a Teams task swiped away from one left in the background**: removing the tasks logged no `ACTIVITY_DESTROYED`. So whether Teams was in Recents before a sync can't be known, only whether it was in front.
+- **One UI's Recents screen is readable by the service** although only Teams' events reach it (`packageNames` limits events, not windows): the launcher's `RecentsActivity`, window title `Recent apps`, holds a `taskView` node per app, described with the app's label (`Teams`), with a click action and a custom action labelled **Close**. **Close all** is a separate `clear_all` button. Opened from Teams, Recents centres the app before it, Teams' card partly off the right edge; Close works on it there all the same, and the app's card click brings back its task as it was (the same window), not a fresh start. Captured as `fixtures/recents/recents_from_teams.xml`, the other apps' names made up.
+
 ## Consequences for the plan
 
 1. The sync reads **Forthcoming then Past due**. Completed is ignored, and any card whose due line says `Submitted` is skipped defensively.
