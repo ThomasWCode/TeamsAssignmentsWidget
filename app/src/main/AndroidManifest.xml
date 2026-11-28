@@ -12,9 +12,18 @@
         android:label="@string/read_assignments_permission_label"
         android:protectionLevel="signature" />
 
-    <!-- Package visibility: needed to check that Teams is installed. -->
+    <!-- Package visibility: needed to check that Teams is installed. The launcher and the apps it
+         lists: after a sync, to find the app that was in front on Recents by its name, or reopen it. -->
     <queries>
         <package android:name="com.microsoft.teams" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
     </queries>
 
     <application

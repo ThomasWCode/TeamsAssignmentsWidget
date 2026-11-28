@@ -25,7 +25,8 @@ class RefreshActivity : ComponentActivity() {
                 service == null -> startActivity(
                     Intent(this@RefreshActivity, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 )
-                !service.startSync(full) ->
+                // The widget is on the home screen, so that's where to go back to.
+                !service.startSync(full, fromHome = true) ->
                     Toast.makeText(this@RefreshActivity, "Already syncing", Toast.LENGTH_SHORT).show()
             }
             finish()

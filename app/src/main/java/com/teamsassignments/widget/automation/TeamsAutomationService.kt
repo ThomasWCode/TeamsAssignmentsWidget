@@ -2,8 +2,10 @@ package com.teamsassignments.widget.automation
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -117,19 +119,50 @@ class TeamsAutomationService : AccessibilityService() {
     /**
      * Starts a sync unless one is already running. [full] rereads every assignment's details; an
      * [automatic] one, which the user didn't just ask for, rereads them less often (see
-     * [SyncStateMachine.MANUAL_DETAIL_REUSE_MS]). Afterwards the phone goes to [returnTo] if given,
-     * otherwise to the home screen and its widget.
+     * [SyncStateMachine.MANUAL_DETAIL_REUSE_MS]). Afterwards Teams is closed and the phone goes
+     * back to where it was (see [LeaveTeams]): to [returnTo] if given, the home screen if
+     * [fromHome] (the widget's ↻, whose own invisible screen is in front as this is called),
+     * otherwise the app in front now; and if that is Teams, Teams stays on Assignments.
      */
-    fun startSync(full: Boolean = false, returnTo: Intent? = null, automatic: Boolean = false): Boolean {
+    fun startSync(full: Boolean = false, returnTo: Intent? = null, automatic: Boolean = false, fromHome: Boolean = false): Boolean {
         if (isBusy) return false
         cancelRequested = false
         dumper.disarm()
         stopWatching()
+        val origin = when {
+            returnTo != null -> Origin.App(packageName, appLabel(packageName)) { reopen(returnTo) }
+            fromHome -> Origin.Home
+            else -> originOf(device.appPackage())
+        }
         job = scope.launch {
-            runSync(full, returnTo, automatic)
+            runSync(full, origin, automatic)
             lookAfterwards()
         }
         return true
+    }
+
+    private fun originOf(app: String?): Origin = when (app) {
+        null, homePackage() -> Origin.Home
+        TeamsSelectors.TEAMS_PACKAGE -> Origin.Teams
+        else -> Origin.App(app, appLabel(app)) { packageManager.getLaunchIntentForPackage(app)?.let(::reopen) ?: false }
+    }
+
+    /** The name an app goes by on its Recents card; needs the `<queries>` entries in the manifest. */
+    private fun appLabel(app: String): String? = try {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(app, 0)).toString()
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    }
+
+    private fun homePackage(): String? =
+        packageManager.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY)
+            ?.activityInfo?.packageName
+
+    private fun reopen(intent: Intent): Boolean = try {
+        startActivity(Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
     }
 
     /** Opens the saved assignment with [key] in Teams. False if busy or unknown. */
@@ -208,7 +241,7 @@ class TeamsAutomationService : AccessibilityService() {
 
     fun disarmDumper() = dumper.disarm()
 
-    private suspend fun runSync(full: Boolean, returnTo: Intent?, automatic: Boolean) {
+    private suspend fun runSync(full: Boolean, origin: Origin, automatic: Boolean) {
         log.add(
             when {
                 full -> "── Full sync ──"
@@ -266,7 +299,20 @@ class TeamsAutomationService : AccessibilityService() {
             }
         }
         if (leaveTeams && device.foregroundPackage() == TeamsSelectors.TEAMS_PACKAGE) {
-            if (returnTo != null) startActivity(returnTo.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) else device.home()
+            val teamsLabel = appLabel(TeamsSelectors.TEAMS_PACKAGE) ?: TeamsSelectors.TEAMS_LABEL
+            val leave = LeaveTeams(device, SystemClock::elapsedRealtime, log::add, teamsLabel)
+            try {
+                // Off the main thread: each look at Recents reads its whole tree over IPC.
+                withContext(Dispatchers.Default) { leave.run(origin) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(SyncLog.TAG, "Leaving Teams crashed", e)
+                log.add("Leaving Teams crashed: $e")
+                device.home()
+            } finally {
+                withContext(NonCancellable) { log.persist() }
+            }
         }
     }
 
