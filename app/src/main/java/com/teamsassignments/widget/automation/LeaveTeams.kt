@@ -51,13 +51,15 @@ class LeaveTeams(
         }
         val recents = if (device.recents()) await(config.openTimeoutMs) { device.recentsRoot() } else null
         if (recents == null) {
-            when (device.foregroundPackage()) {
-                TeamsSelectors.TEAMS_PACKAGE -> {
+            val front = device.foregroundPackage()
+            when {
+                front == TeamsSelectors.TEAMS_PACKAGE -> {
                     log("Recents didn't open: Teams left there")
                     fallBack(origin)
                 }
-                // Home pressed meanwhile, or a Recents screen not as captured: home either way, as before 0.7.0.
-                launcherPackage -> {
+                // Home pressed meanwhile, or a Recents screen not as captured: home either way, as before
+                // 0.7.0. Nothing readable in front (a window mid-change) holds no app to keep, so home too.
+                front == null || front == launcherPackage -> {
                     log("Recents not recognised, or Home pressed: Teams left there")
                     device.home()
                 }

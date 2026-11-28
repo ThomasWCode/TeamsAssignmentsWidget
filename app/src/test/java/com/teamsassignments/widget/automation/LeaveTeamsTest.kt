@@ -18,6 +18,9 @@ class LeaveTeamsTest {
             data object Teams : Screen
             data object Recents : Screen
             data object Home : Screen
+
+            /** Nothing readable in front, as mid-way between windows. */
+            data object Unreadable : Screen
             data class App(val packageName: String) : Screen
         }
 
@@ -69,10 +72,11 @@ class LeaveTeamsTest {
             return true
         }
 
-        override fun foregroundPackage(): String = when (val s = screen) {
+        override fun foregroundPackage(): String? = when (val s = screen) {
             Screen.Teams -> TeamsSelectors.TEAMS_PACKAGE
             Screen.Recents, Screen.Home -> LAUNCHER
             is Screen.App -> s.packageName
+            Screen.Unreadable -> null
         }
 
         override suspend fun awaitChange(timeoutMs: Long) = delay(timeoutMs)
@@ -159,6 +163,15 @@ class LeaveTeamsTest {
         // Home pressed as Recents was asked for, or a Recents screen One UI has since changed.
         val phone = RecentsPhone().apply { onRecents = { it.screen = RecentsPhone.Screen.Home } }
         leave(phone, music())
+        assertTrue(phone.pressed.isEmpty())
+        assertTrue(reopened.isEmpty())
+        assertEquals(1, phone.homes)
+    }
+
+    @Test
+    fun `goes home when nothing readable is in front once Recents was asked for`() = runTest {
+        val phone = RecentsPhone().apply { onRecents = { it.screen = RecentsPhone.Screen.Unreadable } }
+        LeaveTeams(phone, now = { testScheduler.currentTime }, log = { logs += it }, teamsLabel = "Teams", launcherPackage = null).run(music())
         assertTrue(phone.pressed.isEmpty())
         assertTrue(reopened.isEmpty())
         assertEquals(1, phone.homes)
