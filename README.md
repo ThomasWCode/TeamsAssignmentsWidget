@@ -22,7 +22,7 @@ Once a sync ends, done, failed or cancelled, it leaves the phone where it was be
 - **Then back to where you were.** From the widget (↻) or the home screen, that's the home screen. From another app (Decrastination asking for a sync, say), its card on Recents is clicked, which brings it back as it was. From this app's *Sync now*, back to its screen.
 - **If Teams was in front**, it stays open on Assignments, where the sync ends. The screen it showed before can't come back: Teams' link replaces its older task itself.
 - **A Teams left in the background is closed too.** Android doesn't say whether Teams was on Recents before, only whether it was in front, and the link has replaced that task anyway.
-- If you leave Teams yourself during a sync, nothing is touched afterwards. If Recents doesn't open or look as expected, it goes home as before, leaving Teams' card.
+- If you leave Teams yourself during a sync, or go to another app while it leaves, nothing more is touched. If Recents doesn't open or look as expected, it goes home as before, leaving Teams' card.
 
 ### Teams' notifications
 

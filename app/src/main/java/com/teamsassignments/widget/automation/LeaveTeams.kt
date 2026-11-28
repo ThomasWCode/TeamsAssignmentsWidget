@@ -33,13 +33,15 @@ data class LeaveConfig(
  * Safety: on Recents, only the Close action of the cards named [teamsLabel] and the click action
  * of the origin's card are used, never "Close all" or anything else. When Recents doesn't open
  * or doesn't look as expected, it goes Home as before 0.7.0 (Teams' card left where it is), and
- * once the user has left Recents themselves, nothing more is pressed.
+ * once the user has gone to another app themselves, nothing more is pressed.
  */
 class LeaveTeams(
     private val device: TeamsDevice,
     private val now: () -> Long,
     private val log: (String) -> Unit,
     private val teamsLabel: String,
+    /** The home app's package, whose Recents screen this is. */
+    private val launcherPackage: String?,
     private val config: LeaveConfig = LeaveConfig(),
 ) {
     suspend fun run(origin: Origin) {
@@ -49,8 +51,18 @@ class LeaveTeams(
         }
         val recents = if (device.recents()) await(config.openTimeoutMs) { device.recentsRoot() } else null
         if (recents == null) {
-            log("Recents didn't open: Teams left there")
-            fallBack(origin)
+            when (device.foregroundPackage()) {
+                TeamsSelectors.TEAMS_PACKAGE -> {
+                    log("Recents didn't open: Teams left there")
+                    fallBack(origin)
+                }
+                // Home pressed meanwhile, or a Recents screen not as captured: home either way, as before 0.7.0.
+                launcherPackage -> {
+                    log("Recents not recognised, or Home pressed: Teams left there")
+                    device.home()
+                }
+                else -> log("Another app came in front: nothing more pressed")
+            }
             return
         }
         closeTeams(recents)

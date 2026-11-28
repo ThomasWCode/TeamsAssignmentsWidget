@@ -31,6 +31,9 @@ class LeaveTeamsTest {
         val pressed = mutableListOf<String>()
         private val closed = mutableSetOf<String>()
 
+        /** Runs as Recents is asked for, before it shows: the user going elsewhere meanwhile, say. */
+        var onRecents: (RecentsPhone) -> Unit = {}
+
         /** Runs after every action, to script the user taking over. */
         var afterAction: (RecentsPhone) -> Unit = {}
 
@@ -54,6 +57,7 @@ class LeaveTeamsTest {
 
         override fun recents(): Boolean {
             if (opensRecents) screen = Screen.Recents
+            onRecents(this)
             return true
         }
 
@@ -95,7 +99,7 @@ class LeaveTeamsTest {
         Origin.App(MUSIC, label) { reopened += MUSIC; reopens }
 
     private suspend fun TestScope.leave(phone: RecentsPhone, origin: Origin) =
-        LeaveTeams(phone, now = { testScheduler.currentTime }, log = { logs += it }, teamsLabel = "Teams").run(origin)
+        LeaveTeams(phone, now = { testScheduler.currentTime }, log = { logs += it }, teamsLabel = "Teams", launcherPackage = LAUNCHER).run(origin)
 
     @Test
     fun `closes Teams' card, then brings back the app that was in front`() = runTest {
@@ -141,6 +145,26 @@ class LeaveTeamsTest {
     }
 
     @Test
+    fun `presses nothing when the user opens another app before Recents shows`() = runTest {
+        val phone = RecentsPhone().apply { onRecents = { it.screen = RecentsPhone.Screen.App("com.example.chat") } }
+        leave(phone, music())
+        assertTrue(phone.pressed.isEmpty())
+        assertTrue(reopened.isEmpty())
+        assertEquals(0, phone.homes)
+        assertEquals(RecentsPhone.Screen.App("com.example.chat"), phone.screen)
+    }
+
+    @Test
+    fun `goes home, nothing reopened, when the launcher shows something other than the Recents captured`() = runTest {
+        // Home pressed as Recents was asked for, or a Recents screen One UI has since changed.
+        val phone = RecentsPhone().apply { onRecents = { it.screen = RecentsPhone.Screen.Home } }
+        leave(phone, music())
+        assertTrue(phone.pressed.isEmpty())
+        assertTrue(reopened.isEmpty())
+        assertEquals(1, phone.homes)
+    }
+
+    @Test
     fun `still goes back to the app when Teams' card won't close`() = runTest {
         val phone = RecentsPhone().apply { closeWorks = false }
         leave(phone, music())
@@ -152,7 +176,7 @@ class LeaveTeamsTest {
     @Test
     fun `closes nothing when no card is named Teams`() = runTest {
         val phone = RecentsPhone()
-        LeaveTeams(phone, now = { testScheduler.currentTime }, log = { logs += it }, teamsLabel = "Microsoft Teams").run(music())
+        LeaveTeams(phone, now = { testScheduler.currentTime }, log = { logs += it }, teamsLabel = "Microsoft Teams", launcherPackage = LAUNCHER).run(music())
         assertEquals(listOf("Click Music"), phone.pressed)
         assertTrue("No Teams card on Recents" in logs)
     }

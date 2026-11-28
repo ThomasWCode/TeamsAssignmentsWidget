@@ -300,7 +300,7 @@ class TeamsAutomationService : AccessibilityService() {
         }
         if (leaveTeams && device.foregroundPackage() == TeamsSelectors.TEAMS_PACKAGE) {
             val teamsLabel = appLabel(TeamsSelectors.TEAMS_PACKAGE) ?: TeamsSelectors.TEAMS_LABEL
-            val leave = LeaveTeams(device, SystemClock::elapsedRealtime, log::add, teamsLabel)
+            val leave = LeaveTeams(device, SystemClock::elapsedRealtime, log::add, teamsLabel, homePackage())
             try {
                 // Off the main thread: each look at Recents reads its whole tree over IPC.
                 withContext(Dispatchers.Default) { leave.run(origin) }
