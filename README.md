@@ -10,9 +10,19 @@ The official way to read assignments, the Microsoft Graph API, needs a school IT
 
 1. You tap **↻** on the widget.
 2. The *Teams Assignments sync* accessibility service opens Teams straight on Assignments. It reads the **Forthcoming** and **Past due** tabs (together, everything not handed in), bringing the end of a long list into view so Teams loads all of it, then briefly opens each new or changed assignment for its class, exact due time and instructions.
-3. It goes back to the home screen, and the widget shows the list.
+3. It closes Teams and goes back to the home screen, and the widget shows the list.
 
 A progress pill shows while it works ("Syncing assignments 3/7 · Cancel"). A first sync takes a few seconds per assignment. After that, an assignment is only reopened if its row has changed or its details are more than a day old (three days for an automatic sync, one an app such as Decrastination starts without being asked just then: a teacher's edits to the instructions don't change the row, and a sync you asked for can take a few seconds longer). Most refreshes are quick. **Full resync** in the app rereads everything straight away.
+
+### After a sync
+
+Once a sync ends, done, failed or cancelled, it leaves the phone where it was before (0.7.0):
+
+- **Teams is closed**, not left on Recents to swipe away: the service opens Recents for about a second and uses the Close action of Teams' card, as swiping it away would. Android lets no app close another's task, and Teams' link always opens Teams in a fresh one, so this is the only way.
+- **Then back to where you were.** From the widget (↻) or the home screen, that's the home screen. From another app (Decrastination asking for a sync, say), its card on Recents is clicked, which brings it back as it was. From this app's *Sync now*, back to its screen.
+- **If Teams was in front**, it stays open on Assignments, where the sync ends. The screen it showed before can't come back: Teams' link replaces its older task itself.
+- **A Teams left in the background is closed too.** Android doesn't say whether Teams was on Recents before, only whether it was in front, and the link has replaced that task anyway.
+- If you leave Teams yourself during a sync, or go to another app while it leaves, nothing more is touched. If Recents doesn't open or look as expected, it goes home as before, leaving Teams' card.
 
 ### Teams' notifications
 
@@ -53,6 +63,7 @@ Work falling due around the time you looked is left alone, since it may simply h
 ### Safety and privacy
 
 - **Syncing and opening only press tabs and assignment cards.** They never press a button, and never *Hand in*, *Attach* or anything else that changes Teams. Taps go to the centre of a card's title, and are refused if a button, the notification shade or the keyboard covers that spot.
+- **After a sync, on Recents, only two things are pressed:** the Close action of the card named *Teams*, and the card of the app you were in. Never *Close all* or another app's card.
 - **Hand in is the one exception, and only when you ask.** Once you confirm on the widget, it presses the *Hand in* button in Teams' toolbar for that assignment, found by its ID, and nothing else: never *Undo hand in*, *Attach* or anything that changes your work.
 - It only acts when you tap ↻, a row or *Hand in*, or when an app signed with its key asks it to sync or open an assignment (see below). Otherwise it only reads, and only while Teams shows Assignments. It only receives events from Teams, and, given notification access, reads only Teams' notifications.
 - Everything stays on the phone: small JSON files in the app's private storage (the list, its log, and, with notification access, Teams' recent notifications), with nothing backed up or sent anywhere. Apps signed with this app's key can read the list through a read-only provider; no other app can.
@@ -135,6 +146,7 @@ app/src/main/java/com/teamsassignments/widget/
   automation/  TeamsSelectors (every Teams-specific matcher), TeamsScreens (parsers),
                TeamsAutomation + SyncStateMachine + NavigateStateMachine + HandInStateMachine
                (the workflows), TeamsObserver (reading while you use Teams),
+               RecentsScreen + LeaveTeams (closing Teams after a sync),
                TeamsAutomationService and the Android glue (node snapshots, taps, overlay, dumper)
   notices/     TeamsNotices (which Teams notifications are about assignments) and its listener
   widget/      The Glance widget, its receiver, and redraw scheduling
@@ -159,13 +171,15 @@ scripts/       derive_fixtures.py: builds the edge-case fixtures from the captur
 - reading along on 0.5.0: both lists seen in full moving *Updated* on without a sync, every row keeping its instructions, and a class team's own Assignments tab read without touching other classes' work (17 Oct; see [Class teams, filters and empty tabs](docs/teams-ui-notes.md#class-teams-filters-and-empty-tabs-17-oct));
 - the provider read by Decrastination, signed with the same key, and refused to `adb shell`; its sync and open calls both starting (8 Oct, 0.3.0);
 - 0.6.0 with Decrastination 6.13.0 (22 Nov): notification access given from the setup step, the listener enabled; ↻ as a sync you asked for, rereading the five assignments whose details were over a day old (27 s), and an automatic sync asked for with `"auto"`, keeping every one's (9 s); Decrastination reading the list within a second of each sync's end.
+- 0.7.0 (28 Nov), leaving Teams after a sync, each a real automatic sync asked for by Decrastination: from the home screen, Teams' card closed and the home screen back; from Decrastination's own screen, and from this app's *Sync now*, Teams' card closed and that same screen back; with Teams in front, Teams left on Assignments.
 
-The 1 October run, what it turned up, and the fixes that followed in 0.2.1, are under [Deferred live tests](docs/teams-ui-notes.md#deferred-live-tests). **Not checked:** work opened from a Teams notification, a real Teams notification about an assignment reaching the notice listener (none came that day), and the Hand in pill's icon form (below 250 dp, narrower than this phone's launcher allows).
+The 1 October run, what it turned up, and the fixes that followed in 0.2.1, are under [Deferred live tests](docs/teams-ui-notes.md#deferred-live-tests). **Not checked:** work opened from a Teams notification, a real Teams notification about an assignment reaching the notice listener (none came that day), and the Hand in pill's icon form (below 250 dp, narrower than this phone's launcher allows). Nor, for 0.7.0, ↻ on the widget itself (it isn't placed; a sync from the home screen takes the same way out), or a sync cancelled or left part-way (unit-tested only, as tapping the pill or leaving Teams mid-sync risks a tap landing in Teams).
 
 ## Known limitations
 
 - **Tied to the Teams app's layout and English (en-GB) wording.** An update to Teams can break syncing until `TeamsSelectors.kt` is updated.
 - **Takes over the screen while syncing** and while handing in. The widget syncs only when you or an app signed with its key asks (Decrastination does so on its own schedule and after Teams' assignment notifications), and doesn't run while the phone is locked; browsing Assignments in Teams updates the list without taking over. The widget still redraws at midnight and as deadlines pass, from saved data, so "Today" and "Overdue" stay right.
+- **Closing Teams after a sync depends on One UI's Recents screen** (a card per app, named with its label, with a *Close* action, in English) and flashes it for about a second. Should a One UI update change it, Teams is left on Recents and the phone goes home, as before 0.7.0.
 - Assignments you've handed in, and anything older than Teams' *Past due* list, aren't shown.
 - **A class team is known by its name.** Teams shows nothing else on its own Assignments tab, so two class teams with the same name are taken for one there: seeing one's tabs in full can take the other's work as handed in. It's back at the next look at the app's own list (without its instructions until a sync). Kept on purpose: such names are rare, and the mistake mends itself.
 - **A hand-in undone on another device isn't noticed from a list for 12 hours**, as a list alone can't be told from one Teams hasn't refreshed. Opening the assignment in Teams, or a sync, brings it back. The same goes for work returned for revision within 12 hours of the widget seeing it handed in.

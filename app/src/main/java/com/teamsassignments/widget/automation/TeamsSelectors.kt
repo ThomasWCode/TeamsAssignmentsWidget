@@ -9,6 +9,9 @@ import com.teamsassignments.widget.data.AssignmentTab
 object TeamsSelectors {
     const val TEAMS_PACKAGE = "com.microsoft.teams"
 
+    /** Teams' name on its Recents card, should its label not be readable (see [LeaveTeams]). */
+    const val TEAMS_LABEL = "Teams"
+
     /** The Assignments app's id; also appears in Graph `webUrl`s. */
     const val ASSIGNMENTS_APP_ID = "66aeee93-507d-479a-a3ef-8f494af43945"
     const val ASSIGNMENTS_DEEP_LINK = "https://teams.microsoft.com/l/entity/$ASSIGNMENTS_APP_ID/classroom"

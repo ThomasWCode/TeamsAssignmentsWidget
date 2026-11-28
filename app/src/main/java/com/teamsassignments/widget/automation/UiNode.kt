@@ -39,7 +39,13 @@ interface UiNode {
     val isEnabled: Boolean
     val children: List<UiNode>
 
+    /** The labels of the node's labelled accessibility actions, such as "Close" on a Recents card. */
+    val customActions: List<String> get() = emptyList()
+
     fun perform(action: UiAction): Boolean
+
+    /** Performs the action labelled [label] (see [customActions]); false if the node has none. */
+    fun performCustom(label: String): Boolean = false
 }
 
 /** Every node in the tree, in document (pre-)order. */

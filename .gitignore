@@ -17,3 +17,6 @@ local.properties
 
 # Screen dumps pulled from the device while debugging
 /dumps/
+
+# Real data and helper scripts: backups, old APKs, probes
+/private/
