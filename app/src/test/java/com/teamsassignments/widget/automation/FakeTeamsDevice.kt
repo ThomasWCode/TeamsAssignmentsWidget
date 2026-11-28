@@ -182,6 +182,11 @@ class FakeTeamsDevice(
         return true
     }
 
+    // Leaving Teams has its own fake (see LeaveTeamsTest); the workflows never open Recents.
+    override fun recents(): Boolean = false
+
+    override fun recentsRoot(): UiNode? = null
+
     override suspend fun tap(x: Int, y: Int): Boolean {
         tapped += x to y
         // Like the real device: a point off the screen isn't tapped.

@@ -1,0 +1,73 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,0][1080,2340]">
+    <node index="0" text="" resource-id="" class="android.view.View" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,0][1080,2340]">
+    </node>
+    <node index="0" text="" resource-id="" class="android.view.View" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,0][1080,2340]">
+    </node>
+    <node index="0" text="" resource-id="" class="android.widget.LinearLayout" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,0][1080,2340]">
+      <node index="0" text="" resource-id="android:id/content" class="android.widget.FrameLayout" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,0][1080,2340]">
+        <node index="0" text="" resource-id="com.sec.android.app.launcher:id/recents_activity_root_view" class="android.view.ViewGroup" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,0][1080,2340]">
+        </node>
+      </node>
+    </node>
+    <node index="0" text="" resource-id="com.sec.android.app.launcher:id/recentContainer" class="android.widget.FrameLayout" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,0][1080,2340]">
+      <node index="0" text="" resource-id="com.sec.android.app.launcher:id/subViewContainer" class="android.view.ViewGroup" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,0][1080,2340]">
+        <node index="0" text="" resource-id="com.sec.android.app.launcher:id/handOffContainer" class="android.view.ViewGroup" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,103][1080,2298]">
+        </node>
+        <node index="0" text="" resource-id="com.sec.android.app.launcher:id/fgsButtonContainer" class="android.widget.FrameLayout" package="com.sec.android.app.launcher" content-desc="" clickable="true" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,127][400,280]">
+          <node index="0" text="5 active apps" resource-id="com.sec.android.app.launcher:id/fgsButton" class="android.widget.TextView" package="com.sec.android.app.launcher" content-desc="5 items active in background" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[47,153][328,254]">
+          </node>
+        </node>
+        <node index="0" text="" resource-id="com.sec.android.app.launcher:id/top_buttons_flow" class="android.view.View" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,133][1057,276]">
+        </node>
+        <node index="0" text="" resource-id="com.sec.android.app.launcher:id/moreOption" class="android.widget.ImageView" package="com.sec.android.app.launcher" content-desc="More options" clickable="true" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[914,133][1057,276]">
+        </node>
+      </node>
+      <node index="0" text="" resource-id="com.sec.android.app.launcher:id/taskListContainer" class="android.widget.FrameLayout" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,0][1080,2340]">
+        <node index="0" text="" resource-id="com.sec.android.app.launcher:id/fading_edge_effect_view" class="android.widget.FrameLayout" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,0][1080,2340]">
+          <node index="0" text="" resource-id="" class="androidx.recyclerview.widget.RecyclerView" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,0][1080,2340]">
+            <node index="0" text="" resource-id="com.sec.android.app.launcher:id/taskView" class="android.view.ViewGroup" package="com.sec.android.app.launcher" content-desc="Notes" clickable="true" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[43,347][656,1665]" custom-actions="Close">
+              <node index="0" text="" resource-id="com.sec.android.app.launcher:id/task_scene" class="android.view.View" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[43,418][656,1665]">
+              </node>
+            </node>
+            <node index="0" text="" resource-id="com.sec.android.app.launcher:id/taskView" class="android.view.ViewGroup" package="com.sec.android.app.launcher" content-desc="Music" clickable="true" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[200,274][881,1738]" custom-actions="Close">
+              <node index="0" text="" resource-id="com.sec.android.app.launcher:id/task_scene" class="android.view.View" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[200,353][881,1738]">
+              </node>
+              <node index="0" text="" resource-id="com.sec.android.app.launcher:id/task_icon" class="android.view.View" package="com.sec.android.app.launcher" content-desc="Advanced options, Music, Button" clickable="true" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[465,274][617,426]">
+              </node>
+            </node>
+            <node index="0" text="" resource-id="com.sec.android.app.launcher:id/taskView" class="android.view.ViewGroup" package="com.sec.android.app.launcher" content-desc="Teams" clickable="true" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[929,237][1080,1775]" custom-actions="Close">
+              <node index="0" text="" resource-id="com.sec.android.app.launcher:id/task_scene" class="android.view.View" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[929,320][1080,1775]">
+              </node>
+            </node>
+          </node>
+        </node>
+        <node index="0" text="" resource-id="com.sec.android.app.launcher:id/clearAllContainer" class="android.widget.FrameLayout" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[0,0][1080,2340]">
+          <node index="0" text="Close all" resource-id="com.sec.android.app.launcher:id/clear_all" class="android.widget.Button" package="com.sec.android.app.launcher" content-desc="" clickable="true" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[273,1841][807,1965]">
+          </node>
+        </node>
+      </node>
+      <node index="0" text="" resource-id="com.sec.android.app.launcher:id/suggestedAppsContainer" class="android.widget.FrameLayout" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[41,2013][1039,2298]">
+        <node index="0" text="" resource-id="com.sec.android.app.launcher:id/suggestedAppsCellLayout" class="android.view.ViewGroup" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[41,2013][1039,2298]">
+          <node index="0" text="" resource-id="com.sec.android.app.launcher:id/icon_container" class="android.widget.FrameLayout" package="com.sec.android.app.launcher" content-desc="Calendar" clickable="true" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[41,2013][290,2298]">
+            <node index="0" text="Calendar" resource-id="com.sec.android.app.launcher:id/icon" class="android.widget.TextView" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[41,2013][290,2298]">
+            </node>
+          </node>
+          <node index="0" text="" resource-id="com.sec.android.app.launcher:id/icon_container" class="android.widget.FrameLayout" package="com.sec.android.app.launcher" content-desc="Store" clickable="true" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[290,2013][539,2298]">
+            <node index="0" text="Store" resource-id="com.sec.android.app.launcher:id/icon" class="android.widget.TextView" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[290,2013][539,2298]">
+            </node>
+          </node>
+          <node index="0" text="" resource-id="com.sec.android.app.launcher:id/icon_container" class="android.widget.FrameLayout" package="com.sec.android.app.launcher" content-desc="Messages" clickable="true" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[539,2013][788,2298]">
+            <node index="0" text="Messages" resource-id="com.sec.android.app.launcher:id/icon" class="android.widget.TextView" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[539,2013][788,2298]">
+            </node>
+          </node>
+          <node index="0" text="" resource-id="com.sec.android.app.launcher:id/icon_container" class="android.widget.FrameLayout" package="com.sec.android.app.launcher" content-desc="Videos" clickable="true" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[788,2013][1037,2298]">
+            <node index="0" text="Videos" resource-id="com.sec.android.app.launcher:id/icon" class="android.widget.TextView" package="com.sec.android.app.launcher" content-desc="" clickable="false" enabled="true" focusable="false" scrollable="false" long-clickable="false" selected="false" bounds="[788,2013][1037,2298]">
+            </node>
+          </node>
+        </node>
+      </node>
+    </node>
+  </node>
+</hierarchy>

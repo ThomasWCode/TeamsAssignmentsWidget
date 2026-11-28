@@ -119,6 +119,20 @@ class AndroidTeamsDevice(private val service: AccessibilityService) : TeamsDevic
 
     override fun home(): Boolean = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
 
+    override fun recents(): Boolean = service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
+
+    /**
+     * The launcher's Recents screen, the app window on top while it shows. Only Teams' events
+     * reach the service (`packageNames`), but that limits events alone: other windows can be read.
+     */
+    override fun recentsRoot(): UiNode? {
+        val root = topAppWindow()?.root ?: return null
+        return AndroidUiNode.snapshot(root).takeIf { it.complete }?.root?.takeIf(RecentsScreen::isRecents)
+    }
+
+    /** The package of the app window on top, whatever covers it (unlike [foregroundPackage]). */
+    fun appPackage(): String? = topAppWindow()?.root?.packageName?.toString()
+
     /**
      * Taps a point, unless it is off the screen or another window (the notification shade, a
      * heads-up notification, the keyboard, another service's floating button) covers it: an

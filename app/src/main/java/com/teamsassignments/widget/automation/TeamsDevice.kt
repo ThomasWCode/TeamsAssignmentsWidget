@@ -21,6 +21,12 @@ interface TeamsDevice {
 
     fun home(): Boolean
 
+    /** Opens the Recents screen. */
+    fun recents(): Boolean
+
+    /** A fresh snapshot of the Recents screen, or null when it isn't the screen on top (see [RecentsScreen]). */
+    fun recentsRoot(): UiNode?
+
     /** Taps a point with an injected gesture: the fallback when a click action does nothing. */
     suspend fun tap(x: Int, y: Int): Boolean
 }

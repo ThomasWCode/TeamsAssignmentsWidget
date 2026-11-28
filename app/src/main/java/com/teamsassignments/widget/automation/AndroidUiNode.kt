@@ -20,6 +20,7 @@ class AndroidUiNode private constructor(
     override val isSelected: Boolean,
     override val isEnabled: Boolean,
     override val children: List<AndroidUiNode>,
+    override val customActions: List<String>,
 ) : UiNode {
 
     override fun perform(action: UiAction): Boolean = when (action) {
@@ -28,6 +29,9 @@ class AndroidUiNode private constructor(
         UiAction.ScrollBackward -> info.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
         UiAction.ShowOnScreen -> info.performAction(AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)
     }
+
+    override fun performCustom(label: String): Boolean =
+        info.actionList.firstOrNull { it.label?.toString() == label }?.let { info.performAction(it.id) } ?: false
 
     override fun toString(): String = describe()
 
@@ -65,6 +69,7 @@ class AndroidUiNode private constructor(
                     isSelected = info.isSelected,
                     isEnabled = info.isEnabled,
                     children = children,
+                    customActions = info.actionList.mapNotNull { it.label?.toString() },
                 )
             }
 
